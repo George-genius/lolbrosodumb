@@ -1,0 +1,3716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CodeShell</title>
+<style>
+    html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #050608;
+        color: #e5e5e5;
+        font-family: Consolas, "Fira Code", monospace;
+    }
+    #terminal {
+        box-sizing: border-box;
+        padding: 8px 12px;
+        height: 100%;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+    #input-line {
+        display: flex;
+        align-items: center;
+    }
+    #prompt {
+        flex: 0 0 auto;
+        margin-right: 4px;
+    }
+    #cmdline {
+        flex: 1 1 auto;
+        background: transparent;
+        border: none;
+        outline: none;
+        color: #e5e5e5;
+        font: inherit;
+    }
+    .line {
+        margin: 0;
+    }
+    .cmd {
+        color: #8aff80;
+    }
+    .error {
+        color: #ff7070;
+    }
+    .info {
+        color: #80bfff;
+    }
+    .dim {
+        color: #888;
+    }
+
+    #editor-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.9);
+        display: none;
+        z-index: 9999;
+        color: #e5e5e5;
+    }
+    #editor-header {
+        padding: 4px 10px;
+        background: #111;
+        font-size: 13px;
+        border-bottom: 1px solid #333;
+    }
+    #editor-ace {
+        position: absolute;
+        top: 26px;
+        bottom: 32px;
+        left: 0;
+        right: 0;
+    }
+    #editor-footer {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 22px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 4px 10px;
+        background: #111;
+        border-top: 1px solid #333;
+        font-size: 12px;
+    }
+    #editor-footer label {
+    }
+    #editor-footer select {
+        background: #050608;
+        color: #e5e5e5;
+        border: 1px solid #333;
+        border-radius: 3px;
+        font-family: inherit;
+        font-size: 12px;
+    }
+
+
+</style>
+<script src="ace/ace.js"></script>
+<script>
+// Custom CDS mode for .cds files
+if (window.ace) {
+    ace.config.set('basePath', 'ace');
+    ace.define('ace/mode/cds_highlight_rules', [
+        'require', 'exports', 'module',
+        'ace/lib/oop',
+        'ace/mode/text_highlight_rules'
+    ], function (require, exports, module) {
+        var oop = require('ace/lib/oop');
+        var TextHighlightRules = require('ace/mode/text_highlight_rules').TextHighlightRules;
+        var CdsHighlightRules = function () {
+            var keywords = (
+                "app|entry|section|" +
+                "echo|help|clear|pwd|ls|dir|cd|tree|"
+                +
+                "mkdir|touch|cat|edit|rm|del|cp|mv|"
+                +
+                "open|stat|du|head|tail|dl|ul|find|" +
+                "grep|runjs|histroy|apt|whoami|login|useradd|userdel|" +
+                "passwd|sudo|shutdown|restart|sleep|clearram|reloadsys"
+            );
+            var builtinConstants = (
+                "true|false|null|on|off|yes|no"
+            );
+
+            this.$rules = {
+                start: [
+                    {
+                        token: "comment.line.number-sign.cds",
+                        regex: "#.*$"
+                    },
+                    {
+                        token: "comment.line.semicolon.cds",
+                        regex: ";.*$"
+                    },
+                    {
+                        token: ["comment.line.number-sign.cds", "keyword.todo.cds"],
+                        regex: "(#.*?)(TODO|FIXME|XXX)(?=.*$)"
+                    },
+                    {
+                        token: "entity.name.section.cds",
+                        regex: "^\\s*\\[[A-Za-z0-9_\\.\\-]+\\]"
+                    },
+                    {
+                        token: ["variable.parameter.cds", "text", "keyword.operator.assignment.cds"],
+                        regex: "^\\s*([A-Za-z_][A-Za-z0-9_\\-]*)(\\s*)(=)"
+                    },
+                    {
+                        token: ["variable.parameter.cds", "keyword.operator.assignment.cds"],
+                        regex: "([A-Za-z_][A-Za-z0-9_\\-]*)(\\s*=)"
+                    },
+                    {
+                        token: "keyword.control.directive.cds",
+                        regex: "@[A-Za-z_][A-Za-z0-9_]*"
+                    },
+                    {
+                        token: "string.quoted.double.cds",
+                        regex: '"[^"\\\\]*(?:\\\\.[^"\\\\]*)*"'
+                    },
+                    {
+                        token: "string.quoted.single.cds",
+                        regex: "'[^'\\\\]*(?:\\\\.[^'\\\\]*)*'"
+                    },
+                    {
+                        token: "constant.numeric.hex.cds",
+                        regex: "\\b0[xX][0-9a-fA-F]+\\b"
+                    },
+                    {
+                        token: "constant.numeric.binary.cds",
+                        regex: "\\b0[bB][01]+\\b"
+                    },
+                    {
+                        token: "constant.numeric.float.cds",
+                        regex: "\\b[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\\b"
+                    },
+                    {
+                        token: "constant.language.cds",
+                        regex: "\\b(?:" + builtinConstants + ")\\b"
+                    },
+                    {
+                        token: "keyword.other.cds",
+                        regex: "\\b(?:" + keywords + ")\\b"
+                    },
+                    {
+                        token: ["support.type.cds", "punctuation.separator.key-value.cds"],
+                        regex: "\\b([A-Za-z_][A-Za-z0-9_\\-]*)(:)"
+                    },
+                    {
+                        token: "keyword.operator.cds",
+                        regex: "\\+|\\-|\\*|\\/|%|==|!=|<=|>=|<|>|&&|\\|\\||!"
+                    },
+                    {
+                        token: "punctuation.operator.cds",
+                        regex: "[,;]"
+                    },
+                    {
+                        token: "paren.lparen",
+                        regex: "[\\[\\(\\{]"
+                    },
+                    {
+                        token: "paren.rparen",
+                        regex: "[\\]\\)\\}]"
+                    },
+                    {
+                        token: "text",
+                        regex: "\\s+"
+                    }
+                ]
+            };
+
+            this.normalizeRules();
+        };
+
+        oop.inherits(CdsHighlightRules, TextHighlightRules);
+        exports.CdsHighlightRules = CdsHighlightRules;
+    });
+
+    ace.define('ace/mode/cds', ['require', 'exports', 'module', 'ace/lib/oop', 'ace/mode/text', 'ace/mode/cds_highlight_rules'], function(require, exports, module) {
+        var oop = require('ace/lib/oop');
+        var TextMode = require('ace/mode/text').Mode;
+        var CdsHighlightRules = require('ace/mode/cds_highlight_rules').CdsHighlightRules;
+        var Mode = function() {
+            this.HighlightRules = CdsHighlightRules;
+        };
+        oop.inherits(Mode, TextMode);
+        (function() {
+            this.$id = 'ace/mode/cds';
+        }).call(Mode.prototype);
+        exports.Mode = Mode;
+    });
+}
+</script>
+</head>
+<body>
+    <div id="terminal"></div>
+    <div id="editor-overlay">
+        <div id="editor-header"></div>
+        <div id="editor-ace"></div>
+        <div id="editor-footer">
+            <span>Font:</span>
+            <select id="editor-font">
+                <option value="12">12</option>
+                <option value="14" selected>14</option>
+                <option value="16">16</option>
+                <option value="18">18</option>
+                <option value="20">20</option>
+                <option value="22">22</option>
+            </select>
+            <span>Theme:</span>
+            <select id="editor-theme">
+                <option value="monokai" selected>Monokai</option>
+                <option value="github">Github</option>
+                <option value="twilight">Twilight</option>
+                <option value="dracula">Dracula</option>
+                <option value="chrome">Chrome</option>
+                <option value="cdslight">CDS Light</option>
+                <option value="cdsdark">CDS Dark</option>
+            </select>
+            <span>Mode:</span>
+            <select id="editor-mode">
+                <option value="plain" selected>Plain</option>
+                <option value="cpp">C++</option>
+                <option value="c">C</option>
+                <option value="cds">CDS</option>
+                <option value="html">HTML</option>
+                <option value="css">CSS</option>
+                <option value="js">JS</option>
+            </select>
+        </div>
+    </div>
+
+
+    <script>
+        (function () {
+            const term = document.getElementById('terminal');
+            let nativeCtx = null;
+            let nativeReady = false;
+
+            // --- DOM helpers -------------------------------------------------------
+            function print(text, cls) {
+                const div = document.createElement('div');
+                div.className = 'line' + (cls ? ' ' + cls : '');
+                div.textContent = text;
+                term.appendChild(div);
+                term.scrollTop = term.scrollHeight;
+            }
+
+            function printEmpty() {
+                print('');
+            }
+
+            // --- Virtual multi-drive FS + Users (persistent) ----------------------
+            const DRIVE_LETTERS = ['C', 'D', 'E'];
+
+            let drives = {};          // { C: rootDir, D: rootDir, E: rootDir }
+            let currentDrive = 'C';   // 'C' | 'D' | 'E'
+            let currentDir = null;    // node within the current drive
+
+            let users = [];
+            let currentUser = null;
+            let effectiveUser = null;
+            let history = [];
+
+            let apps = []; // CodeShell .cds app registry
+
+            function loadApps() {
+                try {
+                    const raw = localStorage.getItem('CodeShell_APPS');
+                    if (!raw) { apps = []; return; }
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) apps = parsed;
+                    else apps = [];
+                } catch (e) {
+                    apps = [];
+                }
+            }
+
+            function saveApps() {
+                try {
+                    localStorage.setItem('CodeShell_APPS', JSON.stringify(apps));
+                } catch (e) {
+                    // ignore
+                }
+            }
+
+            function parseCds(content, fallbackId) {
+                const lines = content.split(/\r?\n/);
+                let section = null;
+                const meta = { name: '', id: '', version: '', entry: 'run', description: '', cmd: '' };
+                const scripts = {};
+                let buf = [];
+
+                function flush() {
+                    if (!section) return;
+                    const key = section.toLowerCase();
+                    const text = buf.join('\n').trim();
+                    if (!text) { buf = []; return; }
+                    if (key in meta) {
+                        if (key === 'cmd') {
+                            // allow multiple bindings, keep full trimmed text
+                            meta[key] = text.trim();
+                        } else {
+                            // first line only for simple meta
+                            const first = text.split(/\n/)[0];
+                            meta[key] = first.trim();
+                        }
+                    } else {
+                        scripts[key] = text.split(/\n/);
+                    }
+                    buf = [];
+                }
+
+                for (let raw of lines) {
+                    const line = raw.replace(/\t/g, '    ');
+                    if (!line.trim().length) {
+                        buf.push('');
+                        continue;
+                    }
+                    if (/^\s*#/.test(line)) continue;
+                    const m = line.match(/^\s*\[(.+?)\]\s*$/);
+                    if (m) {
+                        flush();
+                        section = m[1];
+                        continue;
+                    }
+                    buf.push(line);
+                }
+                flush();
+
+                if (!meta.id) {
+                    meta.id = (fallbackId || '').replace(/\.cds$/i, '') || 'app_' + Date.now();
+                }
+                if (!meta.name) meta.name = meta.id;
+                if (!meta.version) meta.version = '1.0.0';
+                if (!meta.entry) meta.entry = 'run';
+
+                return {
+                    id: meta.id,
+                    name: meta.name,
+                    version: meta.version,
+                    entry: meta.entry,
+                    description: meta.description,
+                    cmd: meta.cmd,
+                    scripts
+                };
+            }
+
+            function ensureCdsUploadInput() {
+                let input = document.getElementById('cds-upload-input');
+                if (!input) {
+                    input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = '.cds,text/plain';
+                    input.style.display = 'none';
+                    input.id = 'cds-upload-input';
+                    document.body.appendChild(input);
+                }
+                return input;
+            }
+
+
+            function ensureUploadFileInput() {
+                let input = document.getElementById('ul-file-input');
+                if (!input) {
+                    input = document.createElement('input');
+                    input.type = 'file';
+                    input.style.display = 'none';
+                    input.id = 'ul-file-input';
+                    document.body.appendChild(input);
+                }
+                return input;
+            }
+
+            function ensureUploadFolderInput() {
+                let input = document.getElementById('ul-folder-input');
+                if (!input) {
+                    input = document.createElement('input');
+                    input.type = 'file';
+                    // directory upload (supported in Chromium-based browsers)
+                    input.webkitdirectory = true;
+                    input.style.display = 'none';
+                    input.id = 'ul-folder-input';
+                    document.body.appendChild(input);
+                }
+                return input;
+            }
+
+
+
+            function runAppById(id, scriptName, extraArgs) {
+                const app = apps.find(a => a.id === id);
+                if (!app) {
+                    print('apt: no such app: ' + id, 'error');
+                    return;
+                }
+                const scriptKey = (scriptName || app.entry || 'run').toLowerCase();
+                const lines = app.scripts[scriptKey];
+                if (!lines || !lines.length) {
+                    print('apt: app ' + id + ' has no script section [' + scriptKey + ']', 'error');
+                    return;
+                }
+                lines.forEach(rawLine => {
+                    const line = String(rawLine || '').trim();
+                    if (!line || /^#/.test(line)) return;
+                    const parts = tokenize(line);
+                    const cmd = parts[0];
+                    const args = parts.slice(1);
+                    const fn = commands[cmd];
+                    if (!fn) {
+                        print('app[' + id + ']: command not found: ' + cmd, 'error');
+                    } else {
+                        try {
+                            fn(args);
+                        } catch (e) {
+                            print('app[' + id + ']: error: ' + e, 'error');
+                        }
+                    }
+                });
+            }
+
+            function bindAppCommandFor(app) {
+                if (!app.cmd) return;
+                const raw = String(app.cmd || '').trim();
+                if (!raw) return;
+                const lines = raw.split(/\n+/);
+                lines.forEach(line => {
+                    const spec = line.trim();
+                    if (!spec) return;
+                    // syntax: name or name:section
+                    const parts = spec.split(':');
+                    const name = parts[0].trim();
+                    const section = (parts[1] || app.entry || 'run').trim();
+                    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+                        print('apt: invalid cmd name in app ' + app.id + ': ' + name, 'error');
+                        return;
+                    }
+                    if (commands[name]) {
+                        print('apt: cannot bind cmd "' + name + '" for app ' + app.id + ' (command already exists)', 'error');
+                        return;
+                    }
+                    commands[name] = function (args) {
+                        runAppById(app.id, section, args);
+                    };
+                    print('apt: bound command "' + name + '" for app ' + app.id + ' -> [' + section + ']', 'info');
+                });
+            }
+
+            function bindAllAppCommands() {
+                apps.forEach(app => bindAppCommandFor(app));
+            }
+
+            function registerApp(app, sourceInfo) {
+                const existingIndex = apps.findIndex(a => a.id === app.id);
+                const entry = {
+                    id: app.id,
+                    name: app.name,
+                    version: app.version,
+                    entry: app.entry,
+                    description: app.description,
+                    cmd: app.cmd || '',
+                    scripts: app.scripts,
+                    source: sourceInfo.source,
+                    path: sourceInfo.path || null,
+                    installedAt: Date.now()
+                };
+                if (existingIndex >= 0) {
+                    apps[existingIndex] = entry;
+                    print('apt: updated app ' + app.id + ' (' + app.name + ')', 'info');
+                } else {
+                    apps.push(entry);
+                    print('apt: installed app ' + app.id + ' (' + app.name + ')', 'info');
+                }
+                saveApps();
+                bindAppCommandFor(entry);
+            }
+
+            let historyIndex = 0;
+            let hereDoc = null;
+            let jsRepl = null; // {on:boolean, ctx:object}
+
+            // JS stdin bridge (for runjs scripts that want step-by-step input)
+            let jsStdin = { active: false, queue: [], waiter: null };
+
+            function jsStdinBegin() {
+                jsStdin.active = true;
+                updatePrompt();
+            }
+            function jsStdinEnd() {
+                if (jsStdin.waiter) {
+                    try { jsStdin.waiter(null); } catch {}
+                }
+                jsStdin.active = false;
+                jsStdin.queue = [];
+                jsStdin.waiter = null;
+                updatePrompt();
+            }
+            function jsStdinFeed(line) {
+                if (jsStdin.waiter) {
+                    const r = jsStdin.waiter;
+                    jsStdin.waiter = null;
+                    try { r(String(line)); } catch {}
+                } else {
+                    jsStdin.queue.push(String(line));
+                }
+            }
+            function jsReadLine() {
+                return new Promise((resolve) => {
+                    if (jsStdin.queue.length) {
+                        resolve(jsStdin.queue.shift());
+                        return;
+                    }
+                    jsStdin.waiter = resolve;
+                    jsStdinBegin();
+                });
+            }
+            let jobs = []; // {id, cmd, startedAt, status, promise, killed}
+            let jobSeq = 1;
+ // { fileNode, buffer: [], mode: 'write'|'append' }
+            let poweredOff = false;   // for shutdown
+
+            const editorOverlay = document.getElementById('editor-overlay');
+            const editorHeader = document.getElementById('editor-header');
+            const editorFooter = document.getElementById('editor-footer');
+            const editorAceNode = document.getElementById('editor-ace');
+            const editorFontSelect = document.getElementById('editor-font');
+            const editorThemeSelect = document.getElementById('editor-theme');
+            const editorModeSelect = document.getElementById('editor-mode');
+            let editorActive = false;
+            let editorFile = null;
+            let editorAce = null;
+
+            function initAceEditor() {
+                if (editorAce) return editorAce;
+                if (!window.ace) {
+                    console.error('Ace editor not loaded');
+                    return null;
+                }
+                editorAce = ace.edit(editorAceNode);
+                editorAce.setOptions({
+                    fontSize: '14px',
+                    tabSize: 4,
+                    useSoftTabs: true,
+                    showPrintMargin: false,
+                    highlightActiveLine: true
+                });
+                editorAce.setTheme('ace/theme/monokai');
+                editorAce.session.setMode('ace/mode/text');
+                editorAce.session.setUseWrapMode(true);
+                editorAce.$blockScrolling = Infinity;
+                return editorAce;
+            }
+
+            function detectModeFromName(name) {
+                const lower = String(name || '').toLowerCase();
+                if (lower.endsWith('.cpp') || lower.endsWith('.cc') || lower.endsWith('.cxx') || lower.endsWith('.hpp') || lower.endsWith('.hxx')) return 'cpp';
+                if (lower.endsWith('.c') || lower.endsWith('.h')) return 'c';
+                if (lower.endsWith('.cds')) return 'cds';
+                if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'html';
+                if (lower.endsWith('.css')) return 'css';
+                if (lower.endsWith('.js')) return 'js';
+                return 'plain';
+            }
+
+            function applyEditorMode(modeKey) {
+                const ed = initAceEditor();
+                if (!ed) return;
+                let aceMode = 'ace/mode/text';
+                switch (modeKey) {
+                    case 'cpp':
+                    case 'c':
+                        aceMode = 'ace/mode/c_cpp';
+                        break;
+                    case 'cds':
+                        aceMode = 'ace/mode/cds';
+                        break;
+                    case 'html':
+                        aceMode = 'ace/mode/html';
+                        break;
+                    case 'css':
+                        aceMode = 'ace/mode/css';
+                        break;
+                    case 'js':
+                        aceMode = 'ace/mode/javascript';
+                        break;
+                    case 'plain':
+                    default:
+                        aceMode = 'ace/mode/text';
+                        break;
+                }
+                ed.session.setMode(aceMode);
+            }
+
+            function applyEditorTheme(theme) {
+                const ed = initAceEditor();
+                if (!ed) return;
+                const t = theme || 'monokai';
+                ed.setTheme('ace/theme/' + t);
+            }
+
+            function applyEditorFontSize(size) {
+                const ed = initAceEditor();
+                if (!ed) return;
+                const s = parseInt(size, 10) || 14;
+                ed.setFontSize(s);
+            }
+
+            function loadEditorPrefs() {
+                try {
+                    const raw = localStorage.getItem('CodeShell_EDITOR_PREFS');
+                    if (!raw) return { fontSize: '14', theme: 'monokai', mode: null };
+                    const obj = JSON.parse(raw);
+                    return {
+                        fontSize: String(obj.fontSize || '14'),
+                        theme: obj.theme || 'monokai',
+                        mode: obj.mode || null
+                    };
+                } catch (e) {
+                    return { fontSize: '14', theme: 'monokai', mode: null };
+                }
+            }
+
+            function saveEditorPrefs(prefs) {
+                try {
+                    localStorage.setItem('CodeShell_EDITOR_PREFS', JSON.stringify(prefs));
+                } catch (e) {
+                }
+            }
+
+            function syncEditorControls(prefs, detectedMode) {
+                const fm = prefs.fontSize || '14';
+                const th = prefs.theme || 'monokai';
+                const mk = prefs.mode || detectedMode || 'plain';
+                if (editorFontSelect) editorFontSelect.value = fm;
+                if (editorThemeSelect) editorThemeSelect.value = th;
+                if (editorModeSelect) editorModeSelect.value = mk;
+                applyEditorFontSize(fm);
+                applyEditorTheme(th);
+                applyEditorMode(mk);
+            }
+
+            function startEditor(fileNode) {
+                if (!fileNode) return;
+                const ed = initAceEditor();
+                if (!ed) {
+                    print('edit: Ace editor not available', 'error');
+                    return;
+                }
+                editorFile = fileNode;
+                editorActive = true;
+                destroyInput();
+                const path = getPath(fileNode);
+                editorHeader.textContent = 'CodeShell Editor - ' + path + '   [Ctrl+S: save, Esc: close]';
+                ed.setValue(fileNode.content || '', -1);
+                const prefs = loadEditorPrefs();
+                const detected = detectModeFromName(fileNode.name || '');
+                syncEditorControls(prefs, detected);
+                editorOverlay.style.display = 'block';
+                ed.focus();
+            }
+
+            function saveEditor() {
+                if (!editorActive) return;
+                const ed = initAceEditor();
+                if (editorFile && ed) {
+                    const newContent = ed.getValue().replace(/\r\n/g, '\n');
+                    editorFile.content = newContent;
+                    editorFile.modified = now();
+                    if (editorFile.parent) editorFile.parent.modified = now();
+                    saveState();
+                    print('edit: saved ' + getPath(editorFile) + ' (' + getSize(editorFile) + ' bytes)', 'info');
+                }
+            }
+
+            function closeEditor() {
+                if (!editorActive) return;
+                editorOverlay.style.display = 'none';
+                if (editorAce) {
+                    editorAce.setValue('', -1);
+                }
+                editorActive = false;
+                editorFile = null;
+                createInput();
+            }
+
+            window.addEventListener('keydown', function (e) {
+                if (!editorActive) return;
+                if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    saveEditor();
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    closeEditor();
+                }
+            });
+
+            if (editorFontSelect && editorThemeSelect && editorModeSelect) {
+                editorFontSelect.addEventListener('change', function () {
+                    const prefs = loadEditorPrefs();
+                    prefs.fontSize = editorFontSelect.value;
+                    saveEditorPrefs(prefs);
+                    applyEditorFontSize(prefs.fontSize);
+                });
+                editorThemeSelect.addEventListener('change', function () {
+                    const prefs = loadEditorPrefs();
+                    prefs.theme = editorThemeSelect.value;
+                    saveEditorPrefs(prefs);
+                    applyEditorTheme(prefs.theme);
+                });
+                editorModeSelect.addEventListener('change', function () {
+                    const prefs = loadEditorPrefs();
+                    prefs.mode = editorModeSelect.value;
+                    saveEditorPrefs(prefs);
+                    applyEditorMode(prefs.mode);
+                });
+            }
+
+
+            const STORAGE_FS = 'CodeShell_FS_MULTI';
+            const STORAGE_USERS = 'CodeShell_USERS';
+            const STORAGE_USER = 'CodeShell_CURRENT_USER';
+
+            // --- IndexedDB Blob store (for large/binary files) -------------------
+            const BLOB_DB = 'CodeShell_BLOBS';
+            const BLOB_STORE = 'blobs';
+
+            function idbOpen() {
+                return new Promise((resolve, reject) => {
+                    const req = indexedDB.open(BLOB_DB, 1);
+                    req.onupgradeneeded = () => {
+                        const db = req.result;
+                        if (!db.objectStoreNames.contains(BLOB_STORE)) {
+                            db.createObjectStore(BLOB_STORE);
+                        }
+                    };
+                    req.onsuccess = () => resolve(req.result);
+                    req.onerror = () => reject(req.error || new Error('IndexedDB open failed'));
+                });
+            }
+
+            function idbPut(key, blob) {
+                return idbOpen().then(db => new Promise((resolve, reject) => {
+                    const tx = db.transaction(BLOB_STORE, 'readwrite');
+                    const st = tx.objectStore(BLOB_STORE);
+                    st.put(blob, key);
+                    tx.oncomplete = () => { try { db.close(); } catch {} resolve(); };
+                    tx.onerror = () => { try { db.close(); } catch {} reject(tx.error || new Error('IndexedDB put failed')); };
+                }));
+            }
+
+            function idbGet(key) {
+                return idbOpen().then(db => new Promise((resolve, reject) => {
+                    const tx = db.transaction(BLOB_STORE, 'readonly');
+                    const st = tx.objectStore(BLOB_STORE);
+                    const req = st.get(key);
+                    req.onsuccess = () => { const val = req.result; try { db.close(); } catch {} resolve(val || null); };
+                    req.onerror = () => { try { db.close(); } catch {} reject(req.error || new Error('IndexedDB get failed')); };
+                }));
+            }
+
+            function idbDel(key) {
+                return idbOpen().then(db => new Promise((resolve, reject) => {
+                    const tx = db.transaction(BLOB_STORE, 'readwrite');
+                    const st = tx.objectStore(BLOB_STORE);
+                    st.delete(key);
+                    tx.oncomplete = () => { try { db.close(); } catch {} resolve(); };
+                    tx.onerror = () => { try { db.close(); } catch {} reject(tx.error || new Error('IndexedDB delete failed')); };
+                }));
+            }
+
+            function makeBlobKey() {
+                return 'blob_' + now() + '_' + Math.random().toString(16).slice(2);
+            }
+
+            function shouldStoreAsBlob(file) {
+                const name = (file && file.name || '').toLowerCase();
+                const type = (file && file.type || '').toLowerCase();
+                const sz = (file && file.size) || 0;
+
+                // Big files: always blob
+                if (sz > 1024 * 1024) return true; // >1MB
+                // Common binary/media types: blob
+                if (type.startsWith('video/') || type.startsWith('audio/') || type.startsWith('image/')) return true;
+                if (type === 'application/octet-stream') return true;
+
+                // Common text-like extensions can stay as text
+                if (name.match(/\.(txt|md|json|js|mjs|cjs|ts|tsx|css|html?|xml|yml|yaml|cpp|cc|cxx|hpp|hxx|c|h|cds|cds\w*|csv|log)$/)) return false;
+
+                // Default: blob if unknown and not tiny
+                return sz >= 128 * 1024;
+            }
+
+            function isTextMime(m) {
+    const mime = (m || '').toLowerCase();
+    return mime.startsWith('text/') || mime.includes('json') || mime.includes('xml') || mime.includes('javascript') || mime.includes('yaml') || mime.includes('csv');
+}
+
+async function readFileAsText(node) {
+    if (!node || node.type !== 'file') return '';
+    if (node.blobKey) {
+        const b = await idbGet(node.blobKey);
+        if (!b) return '';
+        if (!isTextMime(node.mime || b.type)) return null; // binary
+        // prevent UI death
+        if ((b.size || 0) > 20 * 1024 * 1024) return '[too large to display]';
+        return await b.text();
+    }
+    return String(node.content || '');
+}
+
+async function readFileAsBytes(node) {
+    if (!node || node.type !== 'file') return new Uint8Array();
+    if (node.blobKey) {
+        const b = await idbGet(node.blobKey);
+        if (!b) return new Uint8Array();
+        const buf = await b.arrayBuffer();
+        return new Uint8Array(buf);
+    }
+    const enc = new TextEncoder();
+    return enc.encode(String(node.content || ''));
+}
+
+function u32le(n) {
+    const b = new Uint8Array(4);
+    const dv = new DataView(b.buffer);
+    dv.setUint32(0, n >>> 0, true);
+    return b;
+}
+function u64le(nBig) {
+    let n = BigInt(nBig);
+    const b = new Uint8Array(8);
+    for (let i = 0; i < 8; i++) { b[i] = Number(n & 0xffn); n >>= 8n; }
+    return b;
+}
+function readU32(dv, off) { return dv.getUint32(off, true); }
+function readU64(dv, off) { 
+    let x = 0n;
+    for (let i=7;i>=0;i--) x = (x<<8n) | BigInt(dv.getUint8(off+i));
+    return x;
+}
+
+            function now() {
+                return Date.now();
+            }
+
+            function createDriveRoot(letter) {
+                return {
+                    type: 'dir',
+                    name: '/',
+                    owner: 'root',
+                    children: [],
+                    created: now(),
+                    modified: now(),
+                    parent: null,
+                    drive: letter
+                };
+            }
+
+            function createDir(name, owner) {
+                return {
+                    type: 'dir',
+                    name,
+                    owner,
+                    children: [],
+                    created: now(),
+                    modified: now(),
+                    parent: null
+                };
+            }
+
+            function createFile(name, owner, content = '') {
+                return {
+                    type: 'file',
+                    name,
+                    owner,
+                    content,
+                    // Blob-backed storage (IndexedDB). If blobKey is set, content may be empty.
+                    blobKey: null,
+                    size: (content || '').length,
+                    mime: 'text/plain',
+                    created: now(),
+                    modified: now(),
+                    parent: null
+                };
+            }
+            function ensurePathDir(baseDir, relPath, owner) {
+                // relPath like "sub/dir" relative to baseDir
+                const parts = String(relPath || '').split(/[/\\]+/).filter(Boolean);
+                let node = baseDir;
+                for (const part of parts) {
+                    if (!node.children) node.children = [];
+                    let child = node.children.find(c => c.name === part && c.type === 'dir');
+                    if (!child) {
+                        child = createDir(part, owner || (currentUser && currentUser.username) || 'root');
+                        child.parent = node;
+                        node.children.push(child);
+                        node.modified = now();
+                    }
+                    node = child;
+                }
+                return node;
+            }
+
+
+            function deepCopyForSave(node) {
+                const base = {
+                    type: node.type,
+                    name: node.name,
+                    owner: node.owner,
+                    created: node.created || now(),
+                    modified: node.modified || now()
+                };
+                if (node.drive) base.drive = node.drive;
+                if (node.type === 'file') {
+                    base.content = node.content;
+                    if (node.blobKey) base.blobKey = node.blobKey;
+                    if (typeof node.size === 'number') base.size = node.size;
+                    if (node.mime) base.mime = node.mime;
+                } else {
+                    base.children = node.children.map(deepCopyForSave);
+                }
+                return base;
+            }
+
+            function restoreFS(node, parent = null) {
+                const restored = {
+                    type: node.type,
+                    name: node.name,
+                    owner: node.owner,
+                    created: node.created || now(),
+                    modified: node.modified || node.created || now(),
+                    parent: parent || null
+                };
+                if (node.drive) restored.drive = node.drive;
+                if (node.type === 'file') {
+                    restored.content = node.content || '';
+                    restored.blobKey = node.blobKey || null;
+                    restored.size = (typeof node.size === 'number') ? node.size : (restored.content || '').length;
+                    restored.mime = node.mime || (restored.blobKey ? 'application/octet-stream' : 'text/plain');
+                } else {
+                    restored.children = (node.children || []).map(c => restoreFS(c, restored));
+                }
+                return restored;
+            }
+
+            function saveState() {
+                try {
+                    const fsObj = {};
+                    DRIVE_LETTERS.forEach(d => {
+                        fsObj[d] = deepCopyForSave(drives[d]);
+                    });
+                    localStorage.setItem(STORAGE_FS, JSON.stringify(fsObj));
+                    localStorage.setItem(STORAGE_USERS, JSON.stringify(users));
+                    localStorage.setItem(STORAGE_USER, currentUser ? currentUser.username : '');
+                } catch (e) {
+                    print('warning: failed to save state: ' + e, 'error');
+                }
+            }
+
+            function loadState() {
+                try {
+                    const fsRaw = localStorage.getItem(STORAGE_FS);
+                    const uRaw = localStorage.getItem(STORAGE_USERS);
+                    const cu = localStorage.getItem(STORAGE_USER);
+
+                    if (fsRaw) {
+                        const obj = JSON.parse(fsRaw);
+                        DRIVE_LETTERS.forEach(d => {
+                            if (obj[d]) {
+                                drives[d] = restoreFS(obj[d], null);
+                                drives[d].parent = null;
+                                drives[d].drive = d;
+                            } else {
+                                drives[d] = createDriveRoot(d);
+                            }
+                        });
+                    } else {
+                        DRIVE_LETTERS.forEach(d => {
+                            drives[d] = createDriveRoot(d);
+                        });
+                    }
+
+                    if (uRaw) {
+                        users = JSON.parse(uRaw);
+                    } else {
+                        users = [];
+                    }
+                    if (!users.length) {
+                        users.push({ username: 'root', password: 'codeshell', role: 'admin' });
+                    }
+
+                    currentDrive = 'C';
+                    currentDir = drives[currentDrive];
+                    currentUser = users.find(u => u.username === cu) || users[0];
+                    effectiveUser = currentUser;
+                    loadApps();
+                    bindAllAppCommands();
+                } catch (e) {
+                    DRIVE_LETTERS.forEach(d => {
+                        drives[d] = createDriveRoot(d);
+                    });
+                    users = [{ username: 'root', password: 'root', role: 'admin' }];
+                    currentDrive = 'C';
+                    currentDir = drives[currentDrive];
+                    currentUser = users[0];
+                    effectiveUser = currentUser;
+                    loadApps();
+                    bindAllAppCommands();
+                }
+            }
+
+            // --- Path + FS helpers -------------------------------------------------
+            function getDriveRoot(letter) {
+                return drives[letter];
+            }
+
+            function getRoot(node) {
+                let n = node;
+                while (n.parent) n = n.parent;
+                return n;
+            }
+
+            function getNodeDrive(node) {
+                const root = getRoot(node);
+                return root.drive || currentDrive || 'C';
+            }
+
+            function getPath(node) {
+                const drive = getNodeDrive(node);
+                if (!node.parent) return drive + ':/';
+                const parts = [];
+                let n = node;
+                while (n.parent) {
+                    parts.unshift(n.name);
+                    n = n.parent;
+                }
+                return drive + ':/' + parts.join('/');
+            }
+
+            function findChild(dir, name) {
+                return dir.children.find(c => c.name === name) || null;
+            }
+
+            function resolvePath(path, baseDir) {
+                if (!path) return baseDir;
+
+                // Normalize backslashes -> forward
+                path = path.replace(/\\/g, '/');
+
+                // Drive-only: "C:" -> root of that drive
+                if (/^[CDE]:$/i.test(path)) {
+                    const d = path[0].toUpperCase();
+                    return getDriveRoot(d) || null;
+                }
+
+                let cur;
+                // Drive-absolute: "C:/something/else"
+                const m = /^([CDE]):(.*)$/i.exec(path);
+                if (m) {
+                    const driveLetter = m[1].toUpperCase();
+                    cur = getDriveRoot(driveLetter);
+                    if (!cur) return null;
+                    let rest = m[2] || '';
+                    if (rest.startsWith('/')) rest = rest.slice(1);
+                    path = rest;
+                } else if (path.startsWith('/')) {
+                    // Absolute within current drive, e.g. "/projects"
+                    cur = getDriveRoot(currentDrive);
+                    path = path.slice(1);
+                } else {
+                    // Relative
+                    cur = baseDir;
+                }
+
+                if (!path) return cur;
+                const parts = path.split('/').filter(p => p.length);
+                for (const part of parts) {
+                    if (part === '.') continue;
+                    if (part === '..') {
+                        if (cur.parent) cur = cur.parent;
+                    } else {
+                        if (cur.type !== 'dir') return null;
+                        const child = findChild(cur, part);
+                        if (!child) return null;
+                        cur = child;
+                    }
+                }
+                return cur;
+            }
+
+            function ensureDir(path) {
+                const node = resolvePath(path, currentDir);
+                return (node && node.type === 'dir') ? node : null;
+            }
+
+            function ensureFile(path) {
+                const node = resolvePath(path, currentDir);
+                return (node && node.type === 'file') ? node : null;
+            }
+
+            function canWrite(node) {
+                if (!effectiveUser) return false;
+                if (effectiveUser.role === 'admin') return true;
+                return node.owner === effectiveUser.username;
+            }
+
+            function getSize(node) {
+                if (node.type === 'file') {
+                    if (node.blobKey && typeof node.size === 'number') return node.size;
+                    return (node.content || '').length;
+                }
+                let sum = 0;
+                node.children.forEach(c => {
+                    sum += getSize(c);
+                });
+                return sum;
+            }
+
+            function formatDate(ts) {
+                try {
+                    return new Date(ts).toLocaleString();
+                } catch {
+                    return String(ts);
+                }
+            }
+
+            function switchDrive(letter) {
+                const root = getDriveRoot(letter);
+                if (!root) {
+                    print('drive not found: ' + letter + ':', 'error');
+                    return;
+                }
+                currentDrive = letter;
+                currentDir = root;
+            }
+
+            // --- Tokenizer ---------------------------------------------------------
+            function tokenize(line) {
+                return line.trim().split(/\s+/).filter(Boolean);
+            }
+
+            // --- Commands ----------------------------------------------------------
+            const commands = {};
+
+            commands.help = function (args) {
+                const list = [
+                    'Commands:',
+                    'Core:',
+                    '  help [cmd]           - list commands or show detailed help for cmd',
+                    '  clear                - clear screen',
+                    '  pwd                  - print working directory',
+                    '  ls [-l] [path]       - list files (long with -l)',
+                    '  dir [path]           - listing, supports C:, D:, E:',
+                    '  cd <dir|C:>          - change directory / drive',
+                    '  C: / D: / E:         - quick switch drive',
+                    '  tree [path]          - pretty tree view',
+                    '',
+                    'Files & dirs:',
+                    '  mkdir <name>         - create directory',
+                    '  touch <file>         - create empty file',
+                    '  cat <file>           - show file content',
+                    '  echo <text>          - print text',
+                    '  edit <file>          - open editor (Ctrl+S save, Esc exit)',
+                    '  rm <path>            - delete file or empty dir',
+                    '  del <path>           - delete file or directory recursively',
+                    '  cp <src> <dst>       - copy file/dir',
+                    '  mv <src> <dst>       - move/rename file/dir',
+                    '  open <file>          - print with line numbers',
+                    '  stat <path>          - show file/dir info',
+                    '  du [path]            - disk usage summary',
+                    '  head <file> [n]      - first n lines (default 10)',
+                    '  tail <file> [n]      - last n lines (default 10)',
+                    '  dl <path>            - download a virtual file to your machine',
+                    '  ul <type>            - upload into current dir (type=file|folder)', '',
+                    'Search & dev tools:',
+                    '  find <name>          - search by name',
+                    '  grep <pat> <file>    - search pattern in file',
+                    '  runjs <file>         - execute JS file in shell context',
+                    '  history              - show command history',
+                    '',
+                    'Apps & packages:',
+                    '  apt -install <mode> - install .cds app (mode = upload|path)',
+                    '  apt -remove <id>    - remove CodeShell app from registry',
+                    '  apt -list           - list installed apps',
+                    '  apt -run <id> [sec] - run installed app (sec defaults to entry)', '',
+                    'Archive:',
+                    '  pack <dir> <out.cdspk>   - pack folder to cdspk (gzip if available)',
+                    '  unpack <file.cdspk> [dir]- unpack cdspk into folder', '',
+                    'Storage:',
+                    '  df                  - show storage usage/quota',
+                    '  storage             - show largest files',
+                    '  gc                  - garbage collect orphan blobs', '',
+                    'Jobs:',
+                    '  jobs                - list background jobs',
+                    '  fg <id>             - wait for job to finish',
+                    '  kill <id>           - cancel job (best-effort)', '',
+                    'Users & security:',
+                    '  whoami               - current user (with role)',
+                    '  login <user>         - login (prompts password)',
+                    '  useradd <u> <p> [r]  - add user with role (admin only)',
+                    '  userdel <u> [-f]     - delete user (admin only)',
+                    '  passwd               - change current password',
+                    '  sudo <cmd>           - run command as root (password required)',
+                    '',
+                    'System:',
+                    '  shutdown             - power off (no prompt; refresh page to boot)',
+                    '  restart              - reload page (soft reboot)',
+                    '  sleep [sec]          - sleep, logs wake message later',
+                    '  clearram             - clear session state and reload from disk',
+                    '  reloadsys            - reset CodeShell data (localStorage) and reboot'
+                ];
+                const cmd = args[0];
+                if (!cmd) {
+                    list.forEach(l => print(l, 'info'));
+                    return;
+                }
+                const helpMap = {
+                    'help': [
+                        'help [cmd]',
+                        '  Without arguments: show full command list.',
+                        '  With cmd: show detailed help for that command.'
+                    ],
+                    'ls': [
+                        'ls [-l] [path]',
+                        '  List files in current directory or given path.',
+                        '  -l: show file size and type.'
+                    ],
+                    'dir': [
+                        'dir [path]',
+                        '  Windows-style listing. In this shell it is recursive: for each directory,',
+                        '  prints its contents and then subdirectories.'
+                    ],
+                    'cd': [
+                        'cd <dir|C:>',
+                        '  Change current directory or switch drive (C:, D:, E:).',
+                        '  Examples:',
+                        '    cd D:/Code',
+                        '    cd ..'
+                    ],
+                    'mkdir': [
+                        'mkdir <name>',
+                        '  Create a new directory in the current directory.'
+                    ],
+                    'touch': [
+                        'touch <file>',
+                        '  Create an empty file or update its timestamp.'
+                    ],
+                    'cat': [
+                        'cat <file>',
+                        '  Print the contents of a file.'
+                    ],
+                    'edit': [
+                        'edit <file>',
+                        '  Open the Ace-based editor overlay for a file.',
+                        '  Ctrl+S: save (stay in editor), Esc: close (keep last saved content).',
+                        '  Bottom bar: adjust font size, theme, and syntax mode (Plain/C++/C/CDS/HTML/CSS/JS).'
+                    ],
+                    'rm': [
+                        'rm <path>',
+                        '  Remove a file or an empty directory.'
+                    ],
+                    'del': [
+                        'del <path>',
+                        '  Recursively delete file or directory and its contents.'
+                    ],
+                    'cp': [
+                        'cp <src> <dst>',
+                        '  Copy file or directory. dst can be a directory or a new path.'
+                    ],
+                    'mv': [
+                        'mv <src> <dst>',
+                        '  Move or rename file/dir. dst may be directory or full new path.',
+                        '  Cannot move drive roots (C:, D:, E:).'
+                    ],
+                    'dl': [
+                        'dl <path>',
+                        '  Download the given file from the virtual filesystem as a real file.',
+                        '  Example: dl C:/super.cpp'
+                    ],
+                    'ul': [
+                        'ul <type>',
+                        '  Upload from your machine into the current directory.',
+                        '  type = file | folder',
+                        '  file: choose a single file; folder: choose a folder (recursive files).'
+                    ],
+                    'du': [
+                        'du [path]',
+                        '  Show total bytes, file count and dir count under path.',
+                        '  Examples: du, du C, du D:/Code'
+                    ],
+                    'find': [
+                        'find <name>',
+                        '  Search recursively under current directory for names containing the text.'
+                    ],
+                    'grep': [
+                        'grep <pattern> <file>',
+                        '  Search lines in a file that contain the pattern.'
+                    ],
+                    'runjs': [
+                        'runjs <file>',
+                        '  Execute file content as JavaScript inside the shell context.',
+                        '  Use with care; errors are caught and printed.'
+                    ],
+                    'history': [
+                        'history',
+                        '  Show previously executed commands with index.'
+                    ],
+                    'whoami': [
+                        'whoami',
+                        '  Show current username and role.'
+                    ],
+                    'login': [
+                        'login <user>',
+                        '  Switch to another user (prompts for password).'
+                    ],
+                    'useradd': [
+                        'useradd <username> <password> [role]',
+                        '  Create a new user. Admin only.',
+                        '  role: admin | user | guest | power (default: user).'
+                    ],
+                    'userdel': [
+                        'userdel <username> [-f]',
+                        '  Delete a user account. Admin only.',
+                        '  Cannot delete root.',
+                        '  Cannot delete current user unless -f is supplied.'
+                    ],
+                    'sudo': [
+                        'sudo <cmd> [args...]',
+                        '  Run a single command as root (admin). Prompts for root password.',
+                        '  Does not open a persistent root shell.'
+                    ],
+                    'apt': [
+                        'apt -install upload',
+                        '  Install from a local .cds file chosen with a file picker.',
+                        'apt -install path',
+                        '  Install from a .cds file stored in the virtual file system (e.g. D:/Apps/foo.cds).',
+                        'apt -remove <id>',
+                        '  Remove a registered app by its id (from the internal apps registry).',
+                        'apt -list',
+                        '  List installed apps with id, name, version, entry and cmd bindings.',
+                        'apt -run <id> [section]',
+                        '  Run an installed app by id; section defaults to its [entry] (usually [run]).',
+                       'For details of cds apps, type \'help cds\'.'
+                    ],
+'cds': [
+  'CDS App Format:',
+  'A .cds file defines a CodeShell app.',
+  'It is a plain text file with [section] blocks.',
+  '',
+  'Common sections:',
+  '  [id]          app unique id',
+  '  [name]        display name',
+  '  [version]     version string (default 1.0.0)',
+  '  [entry]       default section (default run)',
+  '  [description] optional description',
+  '',
+  'Script sections:',
+  '  Any other [section] is executable.',
+  '  Each non-empty line runs as a CodeShell command.',
+  '',
+  'Command binding:',
+  '  Use [cmd] to expose app as commands.',
+  '  Format: command or command:section',
+  '  Command name: [a-zA-Z_][a-zA-Z0-9_]*',
+  '',
+  'Run apps:',
+  '  apt -run <id>',
+  '  apt -run <id> <section>',
+  '',
+  'Notes:',
+  '  Lines starting with # are comments.',
+  '  Commands are whitespace-split.',
+  '  Use runjs for complex logic.'
+],
+                    'shutdown': [
+                        'shutdown',
+                        '  Simulate power off: disables input; refresh page to boot again.'
+                    ],
+                    'restart': [
+                        'restart',
+                        '  Reload the page (soft reboot).'
+                    ],
+                    'sleep': [
+                        'sleep [sec]',
+                        '  Queue a wake message after the given delay without blocking the UI.'
+                    ],
+                    'clearram': [
+                        'clearram',
+                        '  Clear in-memory session state and reload from disk snapshot.'
+                    ],
+                    'reloadsys': [
+                        'reloadsys',
+                        '  Reset CodeShell data in localStorage and reboot the shell.'
+                    ],
+'pack': [
+    'pack <dir> <out.cdspk>',
+    '  Pack a directory into a .cdspk archive.',
+    '  Uses gzip compression when supported; otherwise stores uncompressed.',
+    '  Example:',
+    '    pack C:/project C:/project.cdspk'
+],
+'unpack': [
+    'unpack <file.cdspk> [dir]',
+    '  Unpack a .cdspk archive into a directory (default: current dir).',
+    '  Example:',
+    '    unpack C:/project.cdspk C:/restored'
+],
+'df': [
+    'df',
+    '  Show storage usage and browser quota (best-effort).'
+],
+'storage': [
+    'storage',
+    '  List the largest files in the virtual filesystem.'
+],
+'gc': [
+    'gc',
+    '  Garbage-collect orphan blobs in IndexedDB (files removed from FS but blobs remain).'
+],
+'jobs': [
+    'jobs',
+    '  List background jobs started with "&".'
+],
+'fg': [
+    'fg <id>',
+    '  Wait for a background job to finish.'
+],
+'kill': [
+    'kill <id>',
+    '  Cancel a background job (best-effort).'
+]
+                };
+                const entry = helpMap[cmd];
+                if (!entry) {
+                    print('help: no detailed help for "' + cmd + '"', 'error');
+                    return;
+                }
+                entry.forEach(line => print(line, 'info'));
+            };
+
+            commands.clear = function (args) {
+                term.innerHTML = '';
+            };
+
+            commands.pwd = function (args) {
+                print(getPath(currentDir));
+            };
+
+            commands.ls = function (args) {
+                let longMode = false;
+                let path = null;
+                if (args[0] === '-l' || args[0] === '--long') {
+                    longMode = true;
+                    path = args[1];
+                } else {
+                    path = args[0];
+                }
+                const dir = path ? ensureDir(path) : currentDir;
+                if (!dir) {
+                    print('ls: not a directory: ' + (path || ''), 'error');
+                    return;
+                }
+                const children = dir.children.slice().sort((a, b) => a.name.localeCompare(b.name));
+                if (!longMode) {
+                    const names = children.map(c => c.type === 'dir' ? c.name + '/' : c.name);
+                    print(names.join('  '));
+                    return;
+                }
+                children.forEach(node => {
+                    const typeChar = node.type === 'dir' ? 'd' : '-';
+                    const owner = (node.owner || 'unknown').padEnd(8, ' ');
+                    const size = String(getSize(node)).padStart(6, ' ');
+                    const mtime = formatDate(node.modified);
+                    const name = node.type === 'dir' ? node.name + '/' : node.name;
+                    print(typeChar + ' ' + owner + ' ' + size + '  ' + mtime + '  ' + name);
+                });
+            };
+
+            // DIR (recursive)
+            commands.dir = function (args) {
+                let pathArg = args[0];
+
+                if (pathArg) {
+                    pathArg = pathArg.replace(/\\/g, '/');
+                    if (/^[CDE]:$/i.test(pathArg)) {
+                        pathArg = pathArg[0].toUpperCase() + ':/';
+                    }
+                }
+
+                const startDir = pathArg ? ensureDir(pathArg) : currentDir;
+                if (!startDir) {
+                    print('dir: not found: ' + (pathArg || ''), 'error');
+                    return;
+                }
+
+                function dirRecursive(dir) {
+                    const pathStr = getPath(dir);
+                    print(' Directory of ' + pathStr, 'info');
+
+                    const children = dir.children.slice().sort((a, b) => a.name.localeCompare(b.name));
+                    if (!children.length) {
+                        print('    <empty>', 'dim');
+                    } else {
+                        children.forEach(node => {
+                            const isDir = node.type === 'dir';
+                            const typeCol = isDir ? '<DIR>' : '     ';
+                            const sizeCol = isDir ? '          ' : String(getSize(node)).padStart(10, ' ');
+                            print(' ' + typeCol + '  ' + sizeCol + '  ' + node.name);
+                        });
+                    }
+
+                    children.forEach(node => {
+                        if (node.type === 'dir') {
+                            print(''); // blank line between directories
+                            dirRecursive(node);
+                        }
+                    });
+                }
+
+                dirRecursive(startDir);
+            };
+
+            commands.cd = function (args) {
+                const path = args[0];
+                if (!path) {
+                    currentDir = getDriveRoot(currentDrive);
+                    return;
+                }
+                // Drive switch: "C:"
+                if (/^[CDE]:$/i.test(path)) {
+                    const d = path[0].toUpperCase();
+                    const root = getDriveRoot(d);
+                    if (!root) {
+                        print('cd: drive not found: ' + d + ':', 'error');
+                        return;
+                    }
+                    currentDrive = d;
+                    currentDir = root;
+                    return;
+                }
+                const dir = ensureDir(path);
+                if (!dir) {
+                    print('cd: no such directory: ' + path, 'error');
+                    return;
+                }
+                currentDir = dir;
+                currentDrive = getNodeDrive(dir);
+            };
+
+            commands.mkdir = function (args) {
+                const name = args[0];
+                if (!name) {
+                    print('mkdir: missing name', 'error');
+                    return;
+                }
+                if (findChild(currentDir, name)) {
+                    print('mkdir: already exists: ' + name, 'error');
+                    return;
+                }
+                const d = createDir(name, currentUser.username);
+                d.parent = currentDir;
+                currentDir.children.push(d);
+                currentDir.modified = now();
+                saveState();
+            };
+
+            commands.touch = function (args) {
+                const name = args[0];
+                if (!name) {
+                    print('touch: missing file name', 'error');
+                    return;
+                }
+                const existing = findChild(currentDir, name);
+                if (existing) {
+                    if (existing.type !== 'file') {
+                        print('touch: not a file: ' + name, 'error');
+                    } else {
+                        existing.modified = now();
+                    }
+                    saveState();
+                    return;
+                }
+                const f = createFile(name, currentUser.username, '');
+                f.parent = currentDir;
+                currentDir.children.push(f);
+                currentDir.modified = now();
+                saveState();
+            };
+
+            commands.cat = function (args) {
+                const path = args[0];
+                if (!path) {
+                    print('cat: missing file', 'error');
+                    return;
+                }
+                const f = ensureFile(path);
+                if (!f) {
+                    print('cat: no such file: ' + path, 'error');
+                    return;
+                }
+                print(f.content || '');
+            };
+
+            commands.echo = function (args) {
+                print(args.join(' '));
+            };
+
+
+            commands.edit = function (args) {
+                const path = args[0];
+                if (!path) {
+                    print('edit: missing file', 'error');
+                    return;
+                }
+                let f = ensureFile(path);
+                if (!f) {
+                    const name = path.includes('/') ? path.split('/').pop() : path;
+                    const dirPath = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '.';
+                    const dir = dirPath === '.' ? currentDir : ensureDir(dirPath);
+                    if (!dir) {
+                        print('edit: invalid path: ' + path, 'error');
+                        return;
+                    }
+                    f = createFile(name, currentUser.username, '');
+                    f.parent = dir;
+                    dir.children.push(f);
+                    dir.modified = now();
+                }
+                if (!canWrite(f)) {
+                    print('edit: permission denied', 'error');
+                    return;
+                }
+                startEditor(f);
+            };
+
+
+            commands.rm = function (args) {
+                const path = args[0];
+                if (!path) {
+                    print('rm: missing path', 'error');
+                    return;
+                }
+                const node = resolvePath(path, currentDir);
+                if (!node) {
+                    print('rm: no such file or directory: ' + path, 'error');
+                    return;
+                }
+                if (!node.parent) {
+                    print('rm: cannot remove drive root', 'error');
+                    return;
+                }
+                if (!canWrite(node)) {
+                    print('rm: permission denied', 'error');
+                    return;
+                }
+                if (node.type === 'dir' && node.children.length) {
+                    print('rm: directory not empty', 'error');
+                    return;
+                }
+                if (node.type === 'file' && node.blobKey) {
+                    idbDel(node.blobKey).catch(function(){});
+                }
+                const parent = node.parent;
+                parent.children = parent.children.filter(c => c !== node);
+                parent.modified = now();
+                saveState();
+            };
+            commands.del = function (args) {
+                const path = args[0];
+                if (!path) {
+                    print('del: missing path', 'error');
+                    return;
+                }
+
+                const node = resolvePath(path, currentDir);
+                if (!node) {
+                    print('del: no such file or directory: ' + path, 'error');
+                    return;
+                }
+
+                if (!node.parent) {
+                    print('del: cannot remove drive root', 'error');
+                    return;
+                }
+
+                if (!canWrite(node)) {
+                    print('del: permission denied', 'error');
+                    return;
+                }
+
+                function recursiveDelete(n) {
+                    if (n.type === 'dir') {
+                        [...n.children].forEach(child => recursiveDelete(child));
+                    } else if (n.type === 'file' && n.blobKey) {
+                        // best-effort cleanup (async)
+                        idbDel(n.blobKey).catch(function(){});
+                    }
+                    if (n.parent) {
+                        const p = n.parent;
+                        p.children = p.children.filter(c => c !== n);
+                        p.modified = now();
+                    }
+                }
+
+                recursiveDelete(node);
+                saveState();
+            };
+
+            function copyNode(node, newName, newOwner, parent) {
+                if (node.type === 'file') {
+                    const f = createFile(newName, newOwner, node.content);
+                    f.blobKey = node.blobKey || null;
+                    f.size = (typeof node.size === 'number') ? node.size : (node.content || '').length;
+                    f.mime = node.mime || (f.blobKey ? 'application/octet-stream' : 'text/plain');
+                    f.parent = parent;
+                    return f;
+                } else {
+                    const d = createDir(newName, newOwner);
+                    d.parent = parent;
+                    d.children = node.children.map(c => copyNode(c, c.name, newOwner, d));
+                    return d;
+                }
+            }
+
+            commands.cp = function (args) {
+                const src = args[0];
+                const dst = args[1];
+                if (!src || !dst) {
+                    print('cp: usage: cp <src> <dst>', 'error');
+                    return;
+                }
+                const srcNode = resolvePath(src, currentDir);
+                if (!srcNode) {
+                    print('cp: no such file or directory: ' + src, 'error');
+                    return;
+                }
+                let dstNorm = dst.replace(/\\/g, '/');
+                const dstDirPath = dstNorm.endsWith('/') ? dstNorm : dstNorm.substring(0, dstNorm.lastIndexOf('/') + 1);
+                const dstName = dstNorm.endsWith('/') ? srcNode.name : dstNorm.split('/').pop();
+                const dir = dstDirPath ? ensureDir(dstDirPath) : currentDir;
+                if (!dir) {
+                    print('cp: invalid destination: ' + dst, 'error');
+                    return;
+                }
+                const existing = findChild(dir, dstName);
+                if (existing) {
+                    print('cp: destination exists: ' + dstName, 'error');
+                    return;
+                }
+                const newNode = copyNode(srcNode, dstName, currentUser.username, dir);
+                dir.children.push(newNode);
+                dir.modified = now();
+                saveState();
+            };
+
+            commands.mv = function (args) {
+                const src = args[0];
+                const dst = args[1];
+                if (!src || !dst) {
+                    print('mv: usage: mv <src> <dst>', 'error');
+                    return;
+                }
+                const srcNode = resolvePath(src, currentDir);
+                if (!srcNode) {
+                    print('mv: no such file or directory: ' + src, 'error');
+                    return;
+                }
+                if (!canWrite(srcNode)) {
+                    print('mv: permission denied', 'error');
+                    return;
+                }
+
+                // First try: treat dst as an existing directory path
+                const dstNode = resolvePath(dst, currentDir);
+                if (dstNode && dstNode.type === 'dir') {
+                    if (!canWrite(dstNode)) {
+                        print('mv: permission denied', 'error');
+                        return;
+                    }
+                    const conflict = findChild(dstNode, srcNode.name);
+                    if (conflict) {
+                        print('mv: destination exists: ' + srcNode.name, 'error');
+                        return;
+                    }
+                    if (srcNode.parent) {
+                        srcNode.parent.children = srcNode.parent.children.filter(c => c !== srcNode);
+                        srcNode.parent.modified = now();
+                    }
+                    srcNode.parent = dstNode;
+                    srcNode.modified = now();
+                    dstNode.children.push(srcNode);
+                    dstNode.modified = now();
+                    saveState();
+                    return;
+                }
+
+                // Fallback: dst is a new path/name (rename + optional move)
+                let dstNorm = dst.replace(/\\/g, '/');
+                const lastSlash = dstNorm.lastIndexOf('/');
+                const dstDirPath = lastSlash >= 0 ? dstNorm.substring(0, lastSlash + 1) : '';
+                const dstName = lastSlash >= 0 ? dstNorm.substring(lastSlash + 1) : dstNorm;
+                const dir = dstDirPath ? ensureDir(dstDirPath) : currentDir;
+                if (!dir) {
+                    print('mv: invalid destination: ' + dst, 'error');
+                    return;
+                }
+                const exist = findChild(dir, dstName);
+                if (exist) {
+                    print('mv: destination exists: ' + dstName, 'error');
+                    return;
+                }
+                if (srcNode.parent) {
+                    srcNode.parent.children = srcNode.parent.children.filter(c => c !== srcNode);
+                    srcNode.parent.modified = now();
+                }
+                srcNode.name = dstName;
+                srcNode.parent = dir;
+                srcNode.owner = srcNode.owner || currentUser.username;
+                srcNode.modified = now();
+                dir.children.push(srcNode);
+                dir.modified = now();
+                saveState();
+            };
+
+            function printTree(node, prefix) {
+                if (!node.parent) {
+                    const drive = node.drive || 'C';
+                    print(prefix + drive + ':/');
+                } else {
+                    print(prefix + node.name + (node.type === 'dir' ? '/' : ''));
+                }
+                if (node.type === 'dir') {
+                    const sorted = node.children.slice().sort((a, b) => a.name.localeCompare(b.name));
+                    for (let i = 0; i < sorted.length; i++) {
+                        const child = sorted[i];
+                        const isLast = i === sorted.length - 1;
+                        const p = prefix + '   ';
+                        printTree(child, p + (isLast ? '└─ ' : '├─ '));
+                    }
+                }
+            }
+
+            commands.tree = function (args) {
+                const path = args[0];
+                const node = path ? resolvePath(path, currentDir) : currentDir;
+                if (!node) {
+                    print('tree: path not found: ' + (path || ''), 'error');
+                    return;
+                }
+                printTree(node, '');
+            };
+
+            commands.find = function (args) {
+                const name = args[0];
+                if (!name) {
+                    print('find: missing name', 'error');
+                    return;
+                }
+                const matches = [];
+                (function dfs(node) {
+                    if (node.name && node !== getRoot(node) && node.name.includes(name)) {
+                        matches.push(getPath(node));
+                    }
+                    if (node.type === 'dir') {
+                        node.children.forEach(dfs);
+                    }
+                })(currentDir);
+                if (!matches.length) {
+                    print('find: nothing found', 'dim');
+                } else {
+                    matches.forEach(p => print(p));
+                }
+            };
+
+            commands.grep = function (args) {
+                const pat = args[0];
+                const file = args[1];
+                if (!pat || !file) {
+                    print('grep: usage: grep <pattern> <file>', 'error');
+                    return;
+                }
+                const f = ensureFile(file);
+                if (!f) {
+                    print('grep: no such file: ' + file, 'error');
+                    return;
+                }
+                const lines = (f.content || '').split('\n');
+                lines.forEach((line, idx) => {
+                    if (line.includes(pat)) {
+                        print((idx + 1) + ': ' + line);
+                    }
+                });
+            };
+
+            commands.runjs = async function (args) {
+                // runjs <file> : run a JS file (supports step-by-step stdin via readline())
+                // runjs        : enter interactive JS REPL (line-by-line)
+                if (!args || args.length === 0) {
+                    startJsRepl();
+                    return;
+                }
+
+                const file = args[0];
+                const f = ensureFile(file);
+                if (!f) {
+                    print('runjs: no such file: ' + file, 'error');
+                    return;
+                }
+
+                print('// running JS from ' + getPath(f), 'dim');
+
+                // Transform: allow user code to call readline() without writing "await".
+                // We rewrite `readline()` -> `await __readline()` and execute inside an async wrapper.
+                const src = String(f.content || '');
+                const transformed = src.replace(/\breadline\s*\(\s*\)/g, 'await __readline()');
+
+                jsStdinEnd(); // reset any previous sessions
+                try {
+                    const AsyncFunction = Object.getPrototypeOf(async function () { }).constructor;
+
+                    // Small persistent JS context across runjs calls (handy for debugging)
+                    if (!jsRepl) jsRepl = { on: false, ctx: {} };
+                    const ctx = jsRepl.ctx || (jsRepl.ctx = {});
+
+                    const body =
+                        "with (ctx) { return (async () => {\n" +
+                        transformed +
+                        "\n})() }";
+
+                    const fn = new AsyncFunction('__readline', 'print', 'sh', 'commands', 'ctx', body);
+
+                    const r0 = fn(
+                        async () => {
+                            const line = await jsReadLine(); // flips prompt into stdin mode
+                            jsStdin.active = false;
+                            updatePrompt();
+                            return line;
+                        },
+                        (t) => print(String(t)),
+                        async (s) => await runLine(String(s)),
+                        commands,
+                        ctx
+                    );
+
+                    const r = await Promise.resolve(r0);
+                    const out = jsFormat(r);
+                    if (out !== undefined) print(out, 'ok');
+                } catch (e) {
+                    print('runjs error: ' + (e && e.message ? e.message : String(e)), 'error');
+                } finally {
+                    jsStdinEnd();
+                }
+            };
+
+            commands.history = function (args) {
+                history.forEach((h, i) => {
+                    print((i + 1) + '  ' + h);
+                });
+            }
+            commands.apt = async function (args) {
+                if (!args.length) {
+                    print('apt: usage:', 'info');
+                    print('  apt -install <mode> - install .cds app (mode = upload|path)', 'dim');
+                    print('  apt -remove <id>    - remove CodeShell app from registry', 'dim');
+                    print('  apt -list           - list installed apps', 'dim');
+                    print('  apt -run <id> [section] - run an installed app (default section = entry)', 'dim');
+                    return;
+                }
+                const mode = args[0];
+                if (mode === '-install') {
+                    const sub = args[1];
+                    if (!sub) {
+                        print('apt: missing mode (use "upload" or "path")', 'error');
+                        return;
+                    }
+                    if (sub === 'upload') {
+                        const input = ensureCdsUploadInput();
+                        input.value = '';
+                        input.onchange = function (ev) {
+                            const file = ev.target.files && ev.target.files[0];
+                            if (!file) {
+                                print('apt: no file selected', 'error');
+                                return;
+                            }
+                            const reader = new FileReader();
+                            reader.onload = function (e) {
+                                const text = String(e.target.result || '');
+                                try {
+                                    const app = parseCds(text, file.name);
+                                    registerApp(app, { source: 'upload', path: null });
+                                } catch (err) {
+                                    print('apt: failed to parse .cds: ' + err, 'error');
+                                }
+                            };
+                            reader.readAsText(file);
+                        };
+                        input.click();
+                    } else if (sub === 'path') {
+                        const p = await readShellInput('Enter path to .cds file (e.g. D:/Apps/foo.cds):', { promptText: 'path>' });
+                        if (p === null || !p.trim()) {
+                            print('apt: cancelled', 'dim');
+                            return;
+                        }
+                        const fileNode = resolvePath(p, currentDir);
+                        if (!fileNode || fileNode.type !== 'file') {
+                            print('apt: no such file: ' + p, 'error');
+                            return;
+                        }
+                        try {
+                            const app = parseCds(fileNode.content || '', fileNode.name);
+                            registerApp(app, { source: 'fs', path: getPath(fileNode) });
+                        } catch (err) {
+                            print('apt: failed to parse .cds from ' + p + ': ' + err, 'error');
+                        }
+                    } else {
+                        print('apt: unknown install mode: ' + sub + ' (use upload|path)', 'error');
+                    }
+                } else if (mode === '-remove') {
+                    const id = args[1];
+                    if (!id) {
+                        print('apt: missing app id to remove', 'error');
+                        return;
+                    }
+                    const idx = apps.findIndex(a => a.id === id);
+                    if (idx < 0) {
+                        print('apt: no such app: ' + id, 'error');
+                        return;
+                    }
+                    const app = apps[idx];
+                    // unbind any commands registered for this app
+                    if (app.cmd) {
+                        const raw = String(app.cmd || '').trim();
+                        if (raw) {
+                            raw.split(/\n+/).forEach(line => {
+                                const spec = line.trim();
+                                if (!spec) return;
+                                const name = spec.split(':')[0].trim();
+                                if (commands[name]) {
+                                    delete commands[name];
+                                }
+                            });
+                        }
+                    }
+                    apps.splice(idx, 1);
+                    saveApps();
+                    print('apt: removed app ' + app.id + ' (' + app.name + ')', 'info');
+                } else if (mode === '-list') {
+                    if (!apps.length) {
+                        print('apt: no apps installed', 'info');
+                    } else {
+                        print('Installed apps:', 'info');
+                        apps.forEach(a => {
+                            const cmdSummary = a.cmd ? a.cmd.replace(/\n+/g, ', ') : '-';
+                            const src = a.source || 'unknown';
+                            const path = a.path || '';
+                            print('  id=' + a.id + '  name="' + a.name + '"  ver=' + a.version, 'info');
+                            print('    entry=[' + a.entry + ']  cmd=' + cmdSummary, 'dim');
+                            if (path) {
+                                print('    source=' + src + '  path=' + path, 'dim');
+                            } else {
+                                print('    source=' + src, 'dim');
+                            }
+                        });
+                    }
+                } else if (mode === '-run') {
+                    const id = args[1];
+                    const section = args[2] || null;
+                    if (!id) {
+                        print('apt: missing app id to run', 'error');
+                        return;
+                    }
+                    runAppById(id, section, []);
+                } else {
+                    print('apt: unknown option ' + mode, 'error');
+                }
+            };
+            ;
+
+            commands.whoami = function (args) {
+                if (!currentUser) {
+                    print('nobody');
+                    return;
+                }
+                const r = currentUser.role || 'user';
+                print(currentUser.username + ' (' + r + ')');
+            };
+
+            commands.login = async function (args) {
+                const user = args[0];
+                if (!user) {
+                    print('login: missing username', 'error');
+                    return;
+                }
+                const u = users.find(x => x.username === user);
+                if (!u) {
+                    print('login: unknown user', 'error');
+                    return;
+                }
+                const p = await readShellInput('Password for ' + user + ':', { secret: true, promptText: 'password>' });
+                if (p === null) {
+                    print('login: cancelled', 'dim');
+                    return;
+                }
+                if (p !== u.password) {
+                    print('login: incorrect password', 'error');
+                    return;
+                }
+                currentUser = u;
+                effectiveUser = currentUser;
+                saveState();
+                print('logged in as ' + currentUser.username, 'info');
+                updatePrompt();
+            };
+
+            commands.useradd = function (args) {
+                if (!currentUser || currentUser.role !== 'admin') {
+                    print('useradd: admin only', 'error');
+                    return;
+                }
+                const u = args[0];
+                const p = args[1];
+                const roleArg = args[2] || 'user';
+                if (!u || !p) {
+                    print('useradd: usage: useradd <username> <password> [role]', 'error');
+                    return;
+                }
+                if (!['admin', 'user', 'guest', 'power'].includes(roleArg)) {
+                    print('useradd: invalid role (use admin|user|guest|power)', 'error');
+                    return;
+                }
+                if (users.find(x => x.username === u)) {
+                    print('useradd: user exists', 'error');
+                    return;
+                }
+                users.push({ username: u, password: p, role: roleArg });
+                saveState();
+                print('user ' + u + ' created with role ' + roleArg, 'info');
+            }
+            commands.userdel = function (args) {
+                if (!currentUser || currentUser.role !== 'admin') {
+                    print('userdel: admin only', 'error');
+                    return;
+                }
+                const name = args[0];
+                const force = args.includes('-f');
+                if (!name) {
+                    print('userdel: usage: userdel <username> [-f]', 'error');
+                    return;
+                }
+                const uIndex = users.findIndex(u => u.username === name);
+                if (uIndex < 0) {
+                    print('userdel: user not found', 'error');
+                    return;
+                }
+                const u = users[uIndex];
+                if (u.username === 'root') {
+                    print('userdel: cannot delete root', 'error');
+                    return;
+                }
+                if (currentUser.username === name && !force) {
+                    print('userdel: cannot delete current user (use -f)', 'error');
+                    return;
+                }
+                if (u.role === 'admin') {
+                    const otherAdmin = users.some(x => x.username !== name && x.role === 'admin');
+                    if (!otherAdmin) {
+                        print('userdel: cannot remove last admin', 'error');
+                        return;
+                    }
+                }
+                function reassignOwner(node) {
+                    if (node.owner === name) {
+                        node.owner = 'nobody';
+                    }
+                    if (node.type === 'dir' && node.children) {
+                        node.children.forEach(reassignOwner);
+                    }
+                }
+                DRIVE_LETTERS.forEach(d => {
+                    const root = drives[d];
+                    if (root) reassignOwner(root);
+                });
+                users.splice(uIndex, 1);
+                if (currentUser && currentUser.username === name) {
+                    const rootUser = users.find(x => x.username === 'root') || users[0] || null;
+                    currentUser = rootUser;
+                    effectiveUser = rootUser;
+                    if (rootUser) {
+                        print('userdel: switched to ' + rootUser.username, 'info');
+                    } else {
+                        print('userdel: no users left, session unauthenticated', 'error');
+                    }
+                } else if (effectiveUser && effectiveUser.username === name) {
+                    effectiveUser = currentUser;
+                }
+                saveState();
+                print('user ' + name + ' deleted', 'info');
+            };
+            ;
+
+            commands.passwd = async function (args) {
+                if (!currentUser) {
+                    print('passwd: not logged in', 'error');
+                    return;
+                }
+                const oldp = await readShellInput('Current password:', { secret: true, promptText: 'password>' });
+                if (oldp === null) {
+                    print('passwd: cancelled', 'dim');
+                    return;
+                }
+                if (oldp !== currentUser.password) {
+                    print('passwd: incorrect', 'error');
+                    return;
+                }
+                const np = await readShellInput('New password:', { secret: true, promptText: 'password>' });
+                if (np === null || !np.length) {
+                    print('passwd: cancelled', 'dim');
+                    return;
+                }
+                currentUser.password = np;
+                saveState();
+                print('password updated', 'info');
+            };
+
+            commands.sudo = async function (args) {
+                if (!currentUser) {
+                    print('sudo: not logged in', 'error');
+                    return;
+                }
+                if (currentUser.username === 'root') {
+                    print('sudo: you are already root', 'dim');
+                    return;
+                }
+                if (!args.length) {
+                    print('sudo: usage: sudo <command> [args...]', 'error');
+                    return;
+                }
+                const rootUser = users.find(u => u.username === 'root');
+                if (!rootUser) {
+                    print('sudo: root user missing', 'error');
+                    return;
+                }
+                const pw = await readShellInput('[sudo] password for ' + rootUser.username + ':', { secret: true, promptText: 'password>' });
+                if (pw === null) {
+                    print('sudo: cancelled', 'dim');
+                    return;
+                }
+                if (pw !== rootUser.password) {
+                    print('sudo: incorrect password', 'error');
+                    return;
+                }
+                const cmdLine = args.join(' ');
+                const parts = tokenize(cmdLine);
+                const subCmd = parts[0];
+                const subArgs = parts.slice(1);
+                const fn = commands[subCmd];
+                if (!fn) {
+                    print('sudo: command not found: ' + subCmd, 'error');
+                    return;
+                }
+                const prevEffective = effectiveUser;
+                effectiveUser = rootUser;
+                try {
+                    await Promise.resolve(fn(subArgs));
+                } catch (e) {
+                    print('sudo: error: ' + e, 'error');
+                }
+                effectiveUser = prevEffective;
+            };
+
+            commands.open = function (args) {
+                const path = args[0];
+                if (!path) {
+                    print('open: missing file', 'error');
+                    return;
+                }
+                const f = ensureFile(path);
+                if (!f) {
+                    print('open: no such file: ' + path, 'error');
+                    return;
+                }
+                const lines = (f.content || '').split('\n');
+                lines.forEach((line, idx) => {
+                    print(String(idx + 1).padStart(3, ' ') + ' | ' + line);
+                });
+            }
+            commands.dl = function (args) {
+                const path = args[0];
+                if (!path) {
+                    print('dl: usage: dl <path>', 'error');
+                    return;
+                }
+                const node = resolvePath(path, currentDir);
+                if (!node) {
+                    print('dl: no such path: ' + path, 'error');
+                    return;
+                }
+                if (node.type !== 'file') {
+                    print('dl: can only download files', 'error');
+                    return;
+                }
+                const name = node.name || 'codeshell_file';
+                const p = node.blobKey ? idbGet(node.blobKey) : Promise.resolve(null);
+                p.then(function (stored) {
+                    const blob = stored ? stored : new Blob([node.content || ''], { type: (node.mime || 'text/plain;charset=utf-8') });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = name;
+                    document.body.appendChild(a);
+                    a.click();
+                    setTimeout(function () {
+                        URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                    }, 2000);
+                    print('dl: started download for ' + name, 'info');
+                }).catch(function (e) {
+                    print('dl: failed: ' + e, 'error');
+                });
+            }
+
+            commands.ul = function (args) {
+                const type = (args[0] || '').toLowerCase();
+                if (!type || (type !== 'file' && type !== 'folder')) {
+                    print('ul: usage: ul <type>', 'error');
+                    print('  type = file | folder', 'dim');
+                    return;
+                }
+                const owner = (currentUser && currentUser.username) || 'root';
+
+                function upsertTextFile(dirNode, fileName, text, mime) {
+                    if (!dirNode.children) dirNode.children = [];
+                    let existing = dirNode.children.find(c => c.name === fileName && c.type === 'file');
+                    if (!existing) {
+                        existing = createFile(fileName, owner, text);
+                        existing.parent = dirNode;
+                        dirNode.children.push(existing);
+                    } else {
+                        existing.content = text;
+                        existing.modified = now();
+                        existing.owner = owner;
+                    }
+                    existing.blobKey = null;
+                    existing.size = (text || '').length;
+                    existing.mime = mime || 'text/plain';
+                    dirNode.modified = now();
+                    return existing;
+                }
+
+                function upsertBlobFile(dirNode, fileName, blob, mime) {
+                    if (!dirNode.children) dirNode.children = [];
+                    let existing = dirNode.children.find(c => c.name === fileName && c.type === 'file');
+                    if (!existing) {
+                        existing = createFile(fileName, owner, '');
+                        existing.parent = dirNode;
+                        dirNode.children.push(existing);
+                    } else {
+                        existing.modified = now();
+                        existing.owner = owner;
+                    }
+                    const key = existing.blobKey || makeBlobKey();
+                    existing.blobKey = key;
+                    existing.content = '';
+                    existing.size = blob.size || 0;
+                    existing.mime = mime || blob.type || 'application/octet-stream';
+                    dirNode.modified = now();
+                    return idbPut(key, blob).then(() => existing);
+                }
+
+                if (type === 'file') {
+                    const input = ensureUploadFileInput();
+                    input.value = '';
+                    input.onchange = function (ev) {
+                        const file = ev.target.files && ev.target.files[0];
+                        if (!file) {
+                            print('ul: no file selected', 'error');
+                            return;
+                        }
+                        const name = file.name || 'uploaded.bin';
+                        const asBlob = shouldStoreAsBlob(file);
+
+                            if (!asBlob) {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            const text = String(e.target.result || '');
+            const node = upsertTextFile(currentDir, name, text, file.type || 'text/plain');
+            saveState();
+            print('ul: uploaded file into ' + getPath(node), 'info');
+        };
+        reader.readAsText(file);
+    } else {
+        // Store the File/Blob directly into IndexedDB without buffering the whole thing into JS memory
+        upsertBlobFile(currentDir, name, file, file.type).then(node => {
+            saveState();
+            print('ul: uploaded blob file into ' + getPath(node) + ' (' + node.size + ' bytes)', 'info');
+        }).catch(err => {
+            print('ul: failed to store blob: ' + err, 'error');
+        });
+    }
+};
+input.click();
+                    return;
+                }
+
+                // folder upload
+                const input = ensureUploadFolderInput();
+                input.value = '';
+                input.onchange = function (ev) {
+                    const files = ev.target.files;
+                    if (!files || !files.length) {
+                        print('ul: no folder selected or empty folder', 'error');
+                        return;
+                    }
+
+                    const total = files.length;
+                    const basePath = currentDir;
+                    let done = 0;
+                    let failed = 0;
+
+                    function finishOne() {
+                        done++;
+                        if (done === total) {
+                            saveState();
+                            if (failed) print('ul: uploaded folder with ' + total + ' file(s) into ' + getPath(basePath) + ' (failed ' + failed + ')', 'info');
+                            else print('ul: uploaded folder with ' + total + ' file(s) into ' + getPath(basePath), 'info');
+                        }
+                    }
+
+                    Array.from(files).forEach(file => {
+                        const rel = file.webkitRelativePath || file.name;
+                        const parts = rel.split(/[/\\]+/).filter(Boolean);
+                        const fileName = parts.pop();
+                        const subPath = parts.join('/');
+                        const dirNode = subPath ? ensurePathDir(basePath, subPath, owner) : basePath;
+
+                        const asBlob = shouldStoreAsBlob(file);
+                        if (!asBlob) {
+                            const reader = new FileReader();
+                            reader.onload = function (e) {
+                                const text = String(e.target.result || '');
+                                upsertTextFile(dirNode, fileName, text, file.type || 'text/plain');
+                                finishOne();
+                            };
+                            reader.onerror = function () { failed++; finishOne(); };
+                            reader.readAsText(file);
+                        } else {
+                            upsertBlobFile(dirNode, fileName, file, file.type).then(() => finishOne()).catch(() => { failed++; finishOne(); });
+                        }
+                    });
+                };
+                input.click();
+            };
+commands.stat = function (args) {
+                const path = args[0];
+                if (!path) {
+                    print('stat: missing path', 'error');
+                    return;
+                }
+                const node = resolvePath(path, currentDir);
+                if (!node) {
+                    print('stat: no such file or directory: ' + path, 'error');
+                    return;
+                }
+                const size = getSize(node);
+                print('Path    : ' + getPath(node));
+                print('Name    : ' + node.name);
+                print('Type    : ' + (node.type === 'dir' ? 'directory' : 'file'));
+                print('Owner   : ' + (node.owner || 'unknown'));
+                print('Size    : ' + size + ' bytes');
+                print('Created : ' + formatDate(node.created));
+                print('Modified: ' + formatDate(node.modified));
+                if (node.type === 'dir') {
+                    print('Entries : ' + node.children.length);
+                }
+            };
+
+            commands.du = function (args) {
+                let path = args[0];
+                if (path) {
+                    // Handle bare drive like "C" or "C:"
+                    if (/^[CDE]$/i.test(path)) {
+                        path = path.toUpperCase() + ':/';
+                    } else if (/^[CDE]:$/i.test(path)) {
+                        path = path[0].toUpperCase() + ':/';
+                    }
+                }
+                const node = path ? resolvePath(path, currentDir) : currentDir;
+                if (!node) {
+                    print('du: path not found: ' + (path || ''), 'error');
+                    return;
+                }
+                function stats(n) {
+                    if (n.type === 'file') {
+                        return { bytes: getSize(n), files: 1, dirs: 0 };
+                    }
+                    let res = { bytes: 0, files: 0, dirs: 1 };
+                    n.children.forEach(c => {
+                        const s = stats(c);
+                        res.bytes += s.bytes;
+                        res.files += s.files;
+                        res.dirs += s.dirs;
+                    });
+                    return res;
+                }
+                const s = stats(node);
+                print(s.bytes + ' bytes  ' + s.files + ' files  ' + s.dirs + ' dirs  ' + getPath(node));
+            };
+
+            commands.head = function (args) {
+                const path = args[0];
+                const nStr = args[1];
+                if (!path) {
+                    print('head: usage: head <file> [n]', 'error');
+                    return;
+                }
+                const f = ensureFile(path);
+                if (!f) {
+                    print('head: no such file: ' + path, 'error');
+                    return;
+                }
+                let n = 10;
+                if (nStr && !isNaN(parseInt(nStr))) n = parseInt(nStr);
+                const lines = (f.content || '').split('\n');
+                for (let i = 0; i < Math.min(n, lines.length); i++) {
+                    print(lines[i]);
+                }
+            };
+
+            commands.tail = function (args) {
+                const path = args[0];
+                const nStr = args[1];
+                if (!path) {
+                    print('tail: usage: tail <file> [n]', 'error');
+                    return;
+                }
+                const f = ensureFile(path);
+                if (!f) {
+                    print('tail: no such file: ' + path, 'error');
+                    return;
+                }
+                let n = 10;
+                if (nStr && !isNaN(parseInt(nStr))) n = parseInt(nStr);
+                const lines = (f.content || '').split('\n');
+                const start = Math.max(0, lines.length - n);
+                for (let i = start; i < lines.length; i++) {
+                    print(lines[i]);
+                }
+            };
+
+            // --- System commands ---------------------------------------------------
+            // --- Upgrades: async I/O, tools, dashboard, pack/unpack (cdspk) ------
+
+commands.cat = async function (args) {
+    const path = args[0];
+    if (!path) { print('cat: missing file', 'error'); return; }
+    const f = ensureFile(path);
+    if (!f) { print('cat: no such file: ' + path, 'error'); return; }
+    const txt = await readFileAsText(f);
+    if (txt === null) { print('cat: binary file (use dl): ' + path, 'error'); return; }
+    print(txt);
+};
+
+commands.open = async function (args) {
+    const path = args[0];
+    if (!path) { print('open: missing file', 'error'); return; }
+    const f = ensureFile(path);
+    if (!f) { print('open: no such file: ' + path, 'error'); return; }
+    const txt = await readFileAsText(f);
+    if (txt === null) { print('open: binary file (use dl): ' + path, 'error'); return; }
+    const lines = String(txt || '').split('\n');
+    for (let i = 0; i < lines.length; i++) {
+        print(String(i + 1).padStart(4, ' ') + ' | ' + lines[i]);
+    }
+};
+
+commands.head = async function (args) {
+    const path = args[0];
+    if (!path) { print('head: usage: head <file> [n]', 'error'); return; }
+    const f = ensureFile(path);
+    if (!f) { print('head: no such file: ' + path, 'error'); return; }
+    let n = 10;
+    if (args[1] && !isNaN(parseInt(args[1]))) n = parseInt(args[1]);
+    const txt = await readFileAsText(f);
+    if (txt === null) { print('head: binary file (use dl): ' + path, 'error'); return; }
+    const lines = String(txt || '').split('\n');
+    for (let i = 0; i < Math.min(n, lines.length); i++) print(lines[i]);
+};
+
+commands.tail = async function (args) {
+    const path = args[0];
+    if (!path) { print('tail: usage: tail <file> [n]', 'error'); return; }
+    const f = ensureFile(path);
+    if (!f) { print('tail: no such file: ' + path, 'error'); return; }
+    let n = 10;
+    if (args[1] && !isNaN(parseInt(args[1]))) n = parseInt(args[1]);
+    const txt = await readFileAsText(f);
+    if (txt === null) { print('tail: binary file (use dl): ' + path, 'error'); return; }
+    const lines = String(txt || '').split('\n');
+    const start = Math.max(0, lines.length - n);
+    for (let i = start; i < lines.length; i++) print(lines[i]);
+};
+
+// Stronger find: find <pattern> [-r] [path]
+// pattern supports substring or /regex/
+commands.find = function (args) {
+    const patRaw = args[0];
+    if (!patRaw) { print('find: usage: find <name|/re/> [-r] [path]', 'error'); return; }
+    const recursive = args.includes('-r') || args.includes('--recursive');
+    const pathArg = args.find(x => x && x !== patRaw && x !== '-r' && x !== '--recursive');
+    const root = pathArg ? resolvePath(pathArg, currentDir) : currentDir;
+    if (!root) { print('find: path not found', 'error'); return; }
+
+    let re = null, sub = null;
+    if (/^\/.+\/$/.test(patRaw)) {
+        try { re = new RegExp(patRaw.slice(1, -1)); } catch { re = null; }
+    }
+    if (!re) sub = patRaw.toLowerCase();
+
+    const hits = [];
+    const walk = (n) => {
+        if (n.type === 'file') {
+            const name = (n.name || '').toLowerCase();
+            if (re ? re.test(n.name) : name.includes(sub)) hits.push(getPath(n));
+            return;
+        }
+        (n.children || []).forEach(c => {
+            if (c.type === 'dir') {
+                if (re ? re.test(c.name) : (c.name || '').toLowerCase().includes(sub)) hits.push(getPath(c));
+                if (recursive) walk(c);
+            } else walk(c);
+        });
+    };
+    walk(root);
+    if (!hits.length) { print('find: no matches', 'dim'); return; }
+    hits.forEach(p => print(p));
+};
+
+// grep: grep <pat|/re/> <file|dir> [-r]
+commands.grep = async function (args) {
+    const patRaw = args[0];
+    const target = args[1];
+    if (!patRaw || !target) { print('grep: usage: grep <pat|/re/> <file|dir> [-r]', 'error'); return; }
+    const recursive = args.includes('-r') || args.includes('--recursive');
+    let re = null, sub = null;
+    if (/^\/.+\/$/.test(patRaw)) {
+        try { re = new RegExp(patRaw.slice(1, -1)); } catch { re = null; }
+    }
+    if (!re) sub = patRaw;
+
+    const node = resolvePath(target, currentDir);
+    if (!node) { print('grep: no such file or directory: ' + target, 'error'); return; }
+
+    const matchLine = (line) => re ? re.test(line) : line.includes(sub);
+
+    const scanFile = async (f) => {
+        const txt = await readFileAsText(f);
+        if (txt === null) return;
+        const lines = String(txt || '').split('\n');
+        for (let i = 0; i < lines.length; i++) {
+            if (matchLine(lines[i])) print(getPath(f) + ':' + (i + 1) + ':' + lines[i]);
+        }
+    };
+
+    const walk = async (n) => {
+        if (n.type === 'file') return scanFile(n);
+        for (const c of (n.children || [])) {
+            if (c.type === 'dir') {
+                if (recursive) await walk(c);
+            } else await scanFile(c);
+        }
+    };
+    await walk(node);
+};
+
+commands.sha256 = async function (args) {
+    const path = args[0];
+    if (!path) { print('sha256: usage: sha256 <file>', 'error'); return; }
+    const f = ensureFile(path);
+    if (!f) { print('sha256: no such file: ' + path, 'error'); return; }
+    const bytes = await readFileAsBytes(f);
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    const hex = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2,'0')).join('');
+    print(hex + '  ' + getPath(f));
+};
+
+commands.diff = async function (args) {
+    const a = args[0], b = args[1];
+    if (!a || !b) { print('diff: usage: diff <fileA> <fileB>', 'error'); return; }
+    const fa = ensureFile(a), fb = ensureFile(b);
+    if (!fa || !fb) { print('diff: missing file', 'error'); return; }
+    const ta = await readFileAsText(fa), tb = await readFileAsText(fb);
+    if (ta === null || tb === null) { print('diff: binary file(s) not supported', 'error'); return; }
+    const A = String(ta||'').split('\n'), B = String(tb||'').split('\n');
+    const n = Math.max(A.length, B.length);
+    for (let i=0;i<n;i++){
+        if (A[i] === B[i]) continue;
+        if (A[i] !== undefined) print('- ' + A[i], 'error');
+        if (B[i] !== undefined) print('+ ' + B[i], 'info');
+    }
+};
+
+// Storage dashboard + GC
+async function collectBlobStats() {
+    const db = await idbOpen();
+    return await new Promise((resolve) => {
+        const tx = db.transaction(BLOB_STORE, 'readonly');
+        const st = tx.objectStore(BLOB_STORE);
+        let total = 0, count = 0;
+        const req = st.openCursor();
+        req.onsuccess = (e) => {
+            const cur = e.target.result;
+            if (cur) {
+                const val = cur.value;
+                total += (val && val.size) ? val.size : 0;
+                count++;
+                cur.continue();
+            }
+        };
+        tx.oncomplete = () => { try { db.close(); } catch {} resolve({ total, count }); };
+        tx.onerror = () => { try { db.close(); } catch {} resolve({ total, count }); };
+    });
+}
+
+function collectReferencedBlobKeys() {
+    const keys = new Set();
+    const walk = (n) => {
+        if (n.type === 'file' && n.blobKey) keys.add(n.blobKey);
+        if (n.type === 'dir') (n.children || []).forEach(walk);
+    };
+    DRIVE_LETTERS.forEach(d => { if (drives[d]) walk(drives[d]); });
+    return keys;
+}
+
+commands.df = async function () {
+    if (navigator.storage && navigator.storage.estimate) {
+        const est = await navigator.storage.estimate();
+        const used = est.usage || 0;
+        const quota = est.quota || 0;
+        print('Browser storage: ' + used + ' / ' + quota + ' bytes', 'info');
+    } else {
+        print('Browser storage: (estimate not supported)', 'dim');
+    }
+    const bs = await collectBlobStats();
+    print('Blob store: ' + bs.total + ' bytes in ' + bs.count + ' object(s)', 'info');
+};
+
+commands.storage = async function () {
+    const list = [];
+    const walk = (n) => {
+        if (n.type === 'file') list.push({ p: getPath(n), sz: getSize(n), blob: !!n.blobKey });
+        else (n.children || []).forEach(walk);
+    };
+    DRIVE_LETTERS.forEach(d => { if (drives[d]) walk(drives[d]); });
+    list.sort((a,b)=>b.sz-a.sz);
+    const top = list.slice(0,20);
+    if (!top.length) { print('storage: empty', 'dim'); return; }
+    top.forEach(x => print(String(x.sz).padStart(12,' ') + '  ' + (x.blob?'[blob] ':'      ') + x.p));
+    const bs = await collectBlobStats();
+    print('Blob store total: ' + bs.total + ' bytes', 'dim');
+};
+
+commands.gc = async function () {
+    const refs = collectReferencedBlobKeys();
+    const db = await idbOpen();
+    let removed = 0;
+    await new Promise((resolve) => {
+        const tx = db.transaction(BLOB_STORE, 'readwrite');
+        const st = tx.objectStore(BLOB_STORE);
+        const req = st.openCursor();
+        req.onsuccess = (e) => {
+            const cur = e.target.result;
+            if (!cur) return;
+            const key = cur.key;
+            if (!refs.has(String(key))) {
+                cur.delete();
+                removed++;
+            }
+            cur.continue();
+        };
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+    });
+    try { db.close(); } catch {}
+    print('gc: removed ' + removed + ' orphan blob(s)', 'info');
+};
+
+// cdspk: gzip-compressed streaming archive
+async function makeCdspkBlob(dirNode) {
+    const enc = new TextEncoder();
+
+    async function* gen() {
+        async function* emitEntry(path, type, mime, mtime, dataBytesIter) {
+            const meta = { path, type, mime: mime || '', mtime: mtime || now() };
+            const metaBytes = enc.encode(JSON.stringify(meta));
+            yield u32le(metaBytes.length);
+            yield metaBytes;
+
+            if (type === 'dir') {
+                yield u64le(0);
+                return;
+            }
+
+            // data length known? we may have Blob with size, otherwise bytes length
+            let size = 0n;
+            let parts = [];
+            if (dataBytesIter && dataBytesIter.isBlob) {
+                size = BigInt(dataBytesIter.size || 0);
+                yield u64le(size);
+                for await (const chunk of dataBytesIter.stream()) {
+                    yield new Uint8Array(chunk);
+                }
+            } else {
+                for await (const chunk of dataBytesIter) {
+                    parts.push(chunk);
+                    size += BigInt(chunk.length);
+                }
+                yield u64le(size);
+                for (const p of parts) yield p;
+            }
+        }
+
+        async function* walk(n) {
+            const p = getPath(n);
+            if (n.type === 'dir') {
+                for await (const chunk of emitEntry(p, 'dir', '', n.modified, null)) { yield chunk; }
+                for (const c of (n.children || [])) { for await (const chunk2 of walk(c)) { yield chunk2; } }
+            } else {
+                if (n.blobKey) {
+                    const b = await idbGet(n.blobKey);
+                    if (!b) return;
+                    const wrap = { isBlob: true, size: b.size, stream: () => b.stream() };
+                    for await (const chunk of emitEntry(p, 'file', n.mime || b.type, n.modified, wrap)) { yield chunk; }
+                } else {
+                    const bytes = enc.encode(String(n.content || ''));
+                    async function* it(){ yield bytes; }
+                    for await (const chunk of emitEntry(p, 'file', n.mime || 'text/plain', n.modified, it())) { yield chunk; }
+                }
+            }
+        }
+
+        // magic
+        yield enc.encode('CDSPK1\n');
+        for await (const chunk3 of walk(dirNode)) { yield chunk3; }
+    }
+
+    const rs = new ReadableStream({
+        async start(controller) {
+            try {
+                for await (const chunk of gen()) controller.enqueue(chunk);
+                controller.close();
+            } catch (e) { controller.error(e); }
+        }
+    });
+
+    let stream = rs;
+    if (typeof CompressionStream !== 'undefined') {
+        stream = rs.pipeThrough(new CompressionStream('gzip'));
+    }
+    return await new Response(stream).blob();
+}
+
+async function extractCdspk(blob, targetDir) {
+    const dec = new TextDecoder();
+    const enc = new TextEncoder();
+    let stream = blob.stream();
+    if (typeof DecompressionStream !== 'undefined') {
+        try { stream = stream.pipeThrough(new DecompressionStream('gzip')); } catch {}
+    }
+    const reader = stream.getReader();
+    let buf = new Uint8Array(0);
+
+    async function readN(n) {
+        while (buf.length < n) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            const chunk = new Uint8Array(value);
+            const merged = new Uint8Array(buf.length + chunk.length);
+            merged.set(buf,0); merged.set(chunk,buf.length);
+            buf = merged;
+        }
+        if (buf.length < n) throw new Error('cdspk: unexpected EOF');
+        const out = buf.slice(0,n);
+        buf = buf.slice(n);
+        return out;
+    }
+
+    // magic
+    const magic = dec.decode(await readN(6));
+    if (magic !== 'CDSPK1') throw new Error('cdspk: bad magic');
+    await readN(1); // newline
+
+    while (true) {
+        // try read meta length
+        let head;
+        try { head = await readN(4); } catch { break; }
+        const dvh = new DataView(head.buffer, head.byteOffset, head.byteLength);
+        const mlen = readU32(dvh,0);
+        const metaBytes = await readN(mlen);
+        const meta = JSON.parse(dec.decode(metaBytes));
+        const lenBytes = await readN(8);
+        const dvl = new DataView(lenBytes.buffer, lenBytes.byteOffset, lenBytes.byteLength);
+        const dlen = Number(readU64(dvl,0));
+        const rel = String(meta.path || '').replace(/^[CDE]:\/?/i,''); // strip drive
+        // ensure directories
+        const parts = rel.split('/').filter(Boolean);
+        const name = parts.pop() || '';
+        const sub = parts.join('/');
+        const dir = sub ? ensurePathDir(targetDir, sub, (currentUser&&currentUser.username)||'root') : targetDir;
+
+        if (meta.type === 'dir') {
+            if (name) ensurePathDir(targetDir, sub ? (sub + '/' + name) : name, (currentUser&&currentUser.username)||'root');
+            continue;
+        }
+
+        const data = await readN(dlen);
+        const fileMime = meta.mime || 'application/octet-stream';
+        if (isTextMime(fileMime) && dlen < 512*1024) {
+            const text = dec.decode(data);
+            // upsert as text
+            let f = dir.children.find(c=>c.type==='file'&&c.name===name);
+            if (!f) { f=createFile(name,(currentUser&&currentUser.username)||'root',text); f.parent=dir; dir.children.push(f); }
+            f.content=text; f.blobKey=null; f.size=text.length; f.mime=fileMime; f.modified=now();
+        } else {
+            // store as blob
+            let f = dir.children.find(c=>c.type==='file'&&c.name===name);
+            if (!f) { f=createFile(name,(currentUser&&currentUser.username)||'root',''); f.parent=dir; dir.children.push(f); }
+            const key = f.blobKey || makeBlobKey();
+            f.blobKey=key; f.content=''; f.size=dlen; f.mime=fileMime; f.modified=now();
+            await idbPut(key, new Blob([data], {type:fileMime}));
+        }
+        dir.modified=now();
+    }
+    saveState();
+}
+
+commands.pack = async function (args) {
+    const srcPath = args[0], outPath = args[1];
+    if (!srcPath || !outPath) { print('pack: usage: pack <dir> <out.cdspk>', 'error'); return; }
+    const dir = resolvePath(srcPath, currentDir);
+    if (!dir || dir.type !== 'dir') { print('pack: not a directory: ' + srcPath, 'error'); return; }
+    const blob = await makeCdspkBlob(dir);
+    const outName = outPath.split(/[/\\]+/).pop();
+    const outDirPath = outPath.slice(0, outPath.length - outName.length);
+    const outDir = outDirPath ? resolvePath(outDirPath, currentDir) : currentDir;
+    if (!outDir || outDir.type !== 'dir') { print('pack: bad output dir', 'error'); return; }
+    // save as blob file
+    let f = outDir.children.find(c=>c.type==='file'&&c.name===outName);
+    if (!f) { f=createFile(outName,(currentUser&&currentUser.username)||'root',''); f.parent=outDir; outDir.children.push(f); }
+    const key = f.blobKey || makeBlobKey();
+    f.blobKey=key; f.content=''; f.size=blob.size; f.mime='application/x-cdspk'; f.modified=now();
+    await idbPut(key, blob);
+    outDir.modified=now();
+    saveState();
+    print('pack: wrote ' + getPath(f) + ' (' + f.size + ' bytes)', 'info');
+};
+
+commands.unpack = async function (args) {
+    const packPath = args[0];
+    const outDirPath = args[1] || '.';
+    if (!packPath) { print('unpack: usage: unpack <file.cdspk> [dir]', 'error'); return; }
+    const f = ensureFile(packPath);
+    if (!f) { print('unpack: no such file: ' + packPath, 'error'); return; }
+    const outDir = resolvePath(outDirPath, currentDir);
+    if (!outDir || outDir.type !== 'dir') { print('unpack: bad target dir: ' + outDirPath, 'error'); return; }
+    let blob = null;
+    if (f.blobKey) blob = await idbGet(f.blobKey);
+    else blob = new Blob([String(f.content||'')], {type:'application/octet-stream'});
+    if (!blob) { print('unpack: missing blob content', 'error'); return; }
+    await extractCdspk(blob, outDir);
+    print('unpack: done into ' + getPath(outDir), 'info');
+};
+
+commands.shutdown = function (args) {
+                poweredOff = true;
+                print('System is now shut down. Refresh the page to power back on.', 'info');
+                // input line will not be recreated because poweredOff=true is checked in runLine
+            };
+
+            commands.restart = function (args) {
+                print('Restarting system...', 'info');
+                setTimeout(() => {
+                    location.reload();
+                }, 200);
+            };
+
+            commands.sleep = function (args) {
+    let sec = 5;
+    if (args[0] && !isNaN(parseFloat(args[0]))) {
+        sec = Math.max(0, parseFloat(args[0]));
+    }
+    print('Sleeping for ' + sec + ' seconds...', 'dim');
+    // Real sleep: block command flow until done (unless run in background with &)
+    return new Promise(resolve => {
+        setTimeout(() => {
+            print('Woke up from sleep.', 'info');
+            resolve();
+        }, sec * 1000);
+    });
+};
+
+
+            
+commands.jobs = function () {
+    if (!jobs.length) {
+        print('jobs: (none)', 'dim');
+        return;
+    }
+    jobs.forEach(j => {
+        print('[' + j.id + '] ' + j.status + '  ' + j.cmd, j.status === 'running' ? 'info' : 'dim');
+    });
+};
+
+commands.fg = function (args) {
+    const id = parseInt(args[0] || '', 10);
+    if (!id) { print('fg: usage: fg <jobId>', 'error'); return; }
+    const j = jobs.find(x => x.id === id);
+    if (!j) { print('fg: no such job: ' + id, 'error'); return; }
+    print('fg: waiting for job ' + id + '...', 'dim');
+    return Promise.resolve(j.promise);
+};
+
+commands.kill = function (args) {
+    const id = parseInt(args[0] || '', 10);
+    if (!id) { print('kill: usage: kill <jobId>', 'error'); return; }
+    const j = jobs.find(x => x.id === id);
+    if (!j) { print('kill: no such job: ' + id, 'error'); return; }
+    j.killed = true;
+    j.status = 'killed';
+    print('kill: marked job ' + id + ' as killed (best-effort)', 'info');
+};
+commands.clearram = function (args) {
+                saveState();
+                history = [];
+                historyIndex = 0;
+                hereDoc = null;
+                loadState();
+                print('Cleared RAM session state and reloaded from disk.', 'info');
+            };
+
+            commands.reloadsys = function (args) {
+                print('!!! RELOADSYS: resetting CodeShell_* data and rebooting...', 'error');
+                try {
+                    const keysToRemove = [];
+                    for (let i = 0; i < localStorage.length; i++) {
+                        const key = localStorage.key(i);
+                        if (key && key.startsWith('CodeShell_')) {
+                            keysToRemove.push(key);
+                        }
+                    }
+                    keysToRemove.forEach(k => localStorage.removeItem(k));
+                } catch (e) {
+                    print('reloadsys: failed to clear CodeShell data: ' + e, 'error');
+                }
+                setTimeout(() => {
+                    location.reload();
+                }, 5000);
+            };
+
+            // --- Native host mode ------------------------------------------------
+            function nativeBridgeAvailable() {
+                return !!window.nativeFs;
+            }
+
+            function isEnvironmentMode() {
+                return nativeBridgeAvailable();
+            }
+
+            function toNativeDisplayPath(path) {
+                return String(path || '').replace(/\//g, '\\');
+            }
+
+            function getPromptCwd() {
+                return isEnvironmentMode() && nativeCtx && nativeCtx.cwd ? toNativeDisplayPath(nativeCtx.cwd) : getPath(currentDir);
+            }
+
+            function basenameOf(path) {
+                const norm = String(path || '').replace(/\\/g, '/');
+                const parts = norm.split('/').filter(Boolean);
+                return parts.length ? parts[parts.length - 1] : norm;
+            }
+
+            async function ensureNativeContext() {
+                if (!nativeBridgeAvailable()) return null;
+                if (!nativeCtx) {
+                    nativeCtx = await window.nativeFs.getContext();
+                }
+                nativeReady = true;
+                return nativeCtx;
+            }
+
+            function refreshModeUi() {
+                if (nativeCtx && nativeCtx.cwd) {
+                    nativeCtx.cwd = toNativeDisplayPath(nativeCtx.cwd);
+                }
+            }
+
+            async function setNativeCwd(path) {
+                const res = await window.nativeFs.changeDirectory(path, nativeCtx && nativeCtx.cwd ? nativeCtx.cwd : null);
+                nativeCtx = Object.assign({}, nativeCtx || {}, { cwd: res.path, home: res.home || (nativeCtx && nativeCtx.home) });
+                refreshModeUi();
+                updatePrompt();
+                return res;
+            }
+
+            function printNativeList(entries, longMode) {
+                if (!entries || !entries.length) {
+                    print('<empty>', 'dim');
+                    return;
+                }
+                if (!longMode) {
+                    print(entries.map(e => e.type === 'dir' ? e.name + '/' : e.name).join('  '));
+                    return;
+                }
+                entries.forEach(node => {
+                    const typeChar = node.type === 'dir' ? 'd' : '-';
+                    const size = String(node.size || 0).padStart(10, ' ');
+                    const mtime = node.modifiedLocal || node.modifiedUtc || '';
+                    const name = node.type === 'dir' ? node.name + '/' : node.name;
+                    print(typeChar + ' ' + size + '  ' + mtime + '  ' + name);
+                });
+            }
+
+            function printNumberedText(text) {
+                const lines = String(text || '').split(/\r?\n/);
+                lines.forEach((line, i) => print(String(i + 1).padStart(4, ' ') + ' | ' + line));
+            }
+
+            async function runNativeTree(pathArg) {
+                const ctx = await ensureNativeContext();
+                const start = await window.nativeFs.changeDirectory(pathArg || '.', ctx.cwd);
+                print(toNativeDisplayPath(start.path), 'info');
+                async function walk(dirPath, prefix) {
+                    const res = await window.nativeFs.list(dirPath, null);
+                    const entries = (res.entries || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+                    for (let i = 0; i < entries.length; i++) {
+                        const e = entries[i];
+                        const last = i === entries.length - 1;
+                        const branch = last ? '└─ ' : '├─ ';
+                        print(prefix + branch + e.name + (e.type === 'dir' ? '/' : ''));
+                        if (e.type === 'dir') {
+                            await walk(e.path, prefix + (last ? '   ' : '│  '));
+                        }
+                    }
+                }
+                await walk(start.path, '');
+            }
+
+            async function handleNativeCommand(cmd, args) {
+                const ctx = await ensureNativeContext();
+                switch (cmd) {
+                    case 'pwd':
+                        print(toNativeDisplayPath(ctx.cwd));
+                        return true;
+                    case 'cd': {
+                        const target = args[0] || (ctx.home || ctx.cwd);
+                        const res = await setNativeCwd(target);
+                        print('cwd: ' + toNativeDisplayPath(res.path), 'info');
+                        return true;
+                    }
+                    case 'ls': {
+                        let longMode = false;
+                        let pathArg = null;
+                        if (args[0] === '-l' || args[0] === '--long') { longMode = true; pathArg = args[1] || '.'; }
+                        else pathArg = args[0] || '.';
+                        const res = await window.nativeFs.list(pathArg, ctx.cwd);
+                        printNativeList(res.entries || [], longMode);
+                        return true;
+                    }
+                    case 'dir': {
+                        const res = await window.nativeFs.list(args[0] || '.', ctx.cwd);
+                        print(' Directory of ' + toNativeDisplayPath(res.path), 'info');
+                        printNativeList(res.entries || [], true);
+                        return true;
+                    }
+                    case 'tree':
+                        await runNativeTree(args[0] || '.');
+                        return true;
+                    case 'mkdir':
+                        if (!args[0]) { print('mkdir: missing name', 'error'); return true; }
+                        await window.nativeFs.createDirectory(args[0], ctx.cwd);
+                        print('mkdir: created ' + args[0], 'info');
+                        return true;
+                    case 'touch':
+                        if (!args[0]) { print('touch: missing file name', 'error'); return true; }
+                        await window.nativeFs.createEmptyFile(args[0], ctx.cwd);
+                        print('touch: ready ' + args[0], 'info');
+                        return true;
+                    case 'cat':
+                    case 'open': {
+                        if (!args[0]) { print(cmd + ': missing file', 'error'); return true; }
+                        const res = await window.nativeFs.readText(args[0], ctx.cwd);
+                        if (cmd === 'open') printNumberedText(res.text || '');
+                        else print(res.text || '');
+                        return true;
+                    }
+                    case 'edit': {
+                        if (!args[0]) { print('edit: missing file', 'error'); return true; }
+                        const stat = await window.nativeFs.stat(args[0], ctx.cwd, true);
+                        let path = stat.path;
+                        let text = '';
+                        if (stat.exists && stat.type === 'file') {
+                            const res = await window.nativeFs.readText(path, null);
+                            text = res.text || '';
+                        } else if (stat.exists && stat.type === 'dir') {
+                            print('edit: path is a directory', 'error');
+                            return true;
+                        }
+                        startEditor({ __native: true, nativePath: path, name: basenameOf(path), content: text });
+                        return true;
+                    }
+                    case 'rm':
+                        if (!args[0]) { print('rm: missing path', 'error'); return true; }
+                        await window.nativeFs.deletePath(args[0], ctx.cwd, false);
+                        print('rm: removed ' + args[0], 'info');
+                        return true;
+                    case 'del':
+                        if (!args[0]) { print('del: missing path', 'error'); return true; }
+                        await window.nativeFs.deletePath(args[0], ctx.cwd, true);
+                        print('del: removed ' + args[0], 'info');
+                        return true;
+                    case 'cp':
+                        if (!args[0] || !args[1]) { print('cp: usage cp <src> <dst>', 'error'); return true; }
+                        await window.nativeFs.copyPath(args[0], args[1], ctx.cwd);
+                        print('cp: copied', 'info');
+                        return true;
+                    case 'mv':
+                        if (!args[0] || !args[1]) { print('mv: usage mv <src> <dst>', 'error'); return true; }
+                        await window.nativeFs.movePath(args[0], args[1], ctx.cwd);
+                        print('mv: moved', 'info');
+                        return true;
+                    case 'stat': {
+                        if (!args[0]) { print('stat: missing path', 'error'); return true; }
+                        const res = await window.nativeFs.stat(args[0], ctx.cwd, false);
+                        print('path: ' + toNativeDisplayPath(res.path));
+                        print('exists: ' + (res.exists ? 'yes' : 'no'));
+                        if (res.exists) {
+                            print('type: ' + res.type);
+                            print('size: ' + (res.size || 0) + ' bytes');
+                            print('created: ' + (res.createdLocal || res.createdUtc || ''));
+                            print('modified: ' + (res.modifiedLocal || res.modifiedUtc || ''));
+                        }
+                        return true;
+                    }
+                    case 'head':
+                    case 'tail': {
+                        if (!args[0]) { print(cmd + ': missing file', 'error'); return true; }
+                        const n = Math.max(1, parseInt(args[1] || '10', 10) || 10);
+                        const res = await window.nativeFs.readText(args[0], ctx.cwd);
+                        const lines = String(res.text || '').split(/\r?\n/);
+                        const out = cmd === 'head' ? lines.slice(0, n) : lines.slice(Math.max(lines.length - n, 0));
+                        print(out.join('\n'));
+                        return true;
+                    }
+                    case 'find': {
+                        if (!args[0]) { print('find: missing pattern', 'error'); return true; }
+                        const res = await window.nativeFs.find(args[0], ctx.cwd);
+                        const items = res.items || [];
+                        if (!items.length) print('find: no matches', 'dim');
+                        else items.forEach(x => print(toNativeDisplayPath(x.path), x.type === 'dir' ? 'info' : ''));
+                        return true;
+                    }
+                    case 'grep': {
+                        if (!args[0] || !args[1]) { print('grep: usage grep <pat> <file>', 'error'); return true; }
+                        const res = await window.nativeFs.grep(args[0], args[1], ctx.cwd);
+                        const hits = res.matches || [];
+                        if (!hits.length) print('grep: no matches', 'dim');
+                        else hits.forEach(m => print(String(m.lineNumber).padStart(4, ' ') + ': ' + m.line));
+                        return true;
+                    }
+                    case 'dl': {
+                        if (!args[0]) { print('dl: missing file', 'error'); return true; }
+                        const bin = await window.nativeFs.readBase64(args[0], ctx.cwd);
+                        await window.nativeFiles.saveBase64({ fileName: bin.fileName || basenameOf(bin.path), base64: bin.base64, mimeType: bin.mimeType || 'application/octet-stream' });
+                        print('dl: saved copy for ' + toNativeDisplayPath(bin.path), 'info');
+                        return true;
+                    }
+                    case 'ul': {
+                        const type = (args[0] || 'file').toLowerCase();
+                        if (type === 'folder') {
+                            const folder = await window.nativeFiles.pickFolder({ title: 'Choose a folder to copy into the current native directory' });
+                            if (folder && !folder.cancelled && folder.path) {
+                                await window.nativeFs.copyPath(folder.path, basenameOf(folder.path), ctx.cwd);
+                                print('ul: copied folder ' + folder.name, 'info');
+                            } else {
+                                print('ul: cancelled', 'dim');
+                            }
+                            return true;
+                        }
+                        const picked = await window.nativeFiles.pickFile({ includeBase64: true, title: 'Choose a file to copy into the current native directory' });
+                        if (picked && !picked.cancelled && picked.file) {
+                            await window.nativeFs.writeBase64(picked.file.name, picked.file.base64, ctx.cwd, picked.file.mimeType || 'application/octet-stream');
+                            print('ul: copied ' + picked.file.name, 'info');
+                        } else {
+                            print('ul: cancelled', 'dim');
+                        }
+                        return true;
+                    }
+                    case 'df': {
+                        const res = await window.nativeFs.directorySummary('.', ctx.cwd);
+                        print('path: ' + toNativeDisplayPath(res.path));
+                        print('files: ' + res.fileCount);
+                        print('dirs: ' + res.dirCount);
+                        print('size: ' + res.totalSize + ' bytes');
+                        return true;
+                    }
+                    case 'storage': {
+                        const res = await window.nativeFs.largestFiles('.', ctx.cwd, 12);
+                        (res.items || []).forEach(item => print(String(item.size).padStart(10, ' ') + '  ' + toNativeDisplayPath(item.path)));
+                        if (!(res.items || []).length) print('storage: nothing found', 'dim');
+                        return true;
+                    }
+                    case 'hostinfo': {
+                        const info = await window.nativeHost.getInfo();
+                        print('app: ' + info.appName);
+                        print('os: ' + info.os);
+                        print('runtime: ' + info.runtime);
+                        print('native cwd: ' + toNativeDisplayPath((nativeCtx && nativeCtx.cwd) || ''));
+                        return true;
+                    }
+                    default:
+                        return false;
+                }
+            }
+
+            // --- Prompt + input management ----------------------------------------
+            let inputContainer = null;
+            let promptSpan = null;
+            let inputBox = null;
+            let shellReadRequest = null;
+
+            function updatePrompt() {
+                if (!promptSpan) return;
+                const u = effectiveUser || currentUser;
+                const user = u ? u.username : 'guest';
+                const role = u ? (u.role || 'user') : 'guest';
+                const cwd = getPromptCwd();
+                const sigil = (user === 'root' || role === 'admin') ? '#' : '$';
+                promptSpan.textContent = shellReadRequest ? (shellReadRequest.promptText || (shellReadRequest.secret ? 'password>' : 'input>'))
+                    : (jsRepl && jsRepl.on) ? ('js ' + user + '@codeshell:' + cwd + sigil)
+                    : (jsStdin && jsStdin.active) ? ('stdin ' + user + '@codeshell:' + cwd + '>')
+                    : (user + '@codeshell:' + cwd + sigil);
+                if (inputBox) inputBox.type = (shellReadRequest && shellReadRequest.secret) ? 'password' : 'text';
+            }
+
+            async function readShellInput(message, options) {
+                options = options || {};
+                const secret = !!options.secret;
+                const promptText = options.promptText || (secret ? 'password>' : 'input>');
+                if (message) print(message, 'info');
+                return new Promise(function (resolve) {
+                    shellReadRequest = {
+                        secret: secret,
+                        promptText: promptText,
+                        resolve: resolve
+                    };
+                    if (inputBox) {
+                        inputBox.value = '';
+                        inputBox.type = secret ? 'password' : 'text';
+                        inputBox.focus();
+                    }
+                    updatePrompt();
+                });
+            }
+            function jsFormat(v) {
+                if (v === undefined) return undefined;
+                if (typeof v === 'string') return v;
+                if (typeof v === 'number' || typeof v === 'boolean' || v === null) return String(v);
+                try { return JSON.stringify(v, null, 2); } catch (_) { return String(v); }
+            }
+
+            function startJsRepl() {
+                if (!jsRepl) jsRepl = { on: true, ctx: {} };
+                jsRepl.on = true;
+                jsRepl.ctx = jsRepl.ctx || {};
+                print('=== JS REPL Mode ===', 'info');
+                print('Type JavaScript code line-by-line. Results print automatically. Promises are awaited.', 'info');
+                print('Commands: .exit  |  !<shell command> (e.g. !ls -l)  |  .help', 'info');
+                updatePrompt();
+            }
+
+            function stopJsRepl() {
+                if (jsRepl) jsRepl.on = false;
+                print('JS REPL exited.', 'info');
+                updatePrompt();
+            }
+
+            async function evalJsLine(code) {
+                const line = code.trim();
+                if (!jsRepl || !jsRepl.on) return;
+                if (!line) return;
+
+                if (line === '.exit' || line === 'exit' || line === 'quit' || line === ':q') {
+                    stopJsRepl();
+                    return;
+                }
+                if (line === '.help') {
+                    print('JS REPL tips:', 'info');
+                    print('  - Write normal JS. If it returns something, it prints.', 'info');
+                    print('  - If it returns a Promise, it is awaited automatically.', 'info');
+                    print('  - Use !<cmd> to run a CodeShell command from JS mode.', 'info');
+                    print('  - Variables persist in a shared context object.', 'info');
+                    print('    Example: x = 123;  x + 1', 'info');
+                    return;
+                }
+                if (line[0] === '!') {
+                    await runLine(line.slice(1));
+                    return;
+                }
+
+                const ctx = jsRepl.ctx || (jsRepl.ctx = {});
+                const AsyncFunction = Object.getPrototypeOf(async function () { }).constructor;
+
+                try {
+                    const fn = new AsyncFunction('ctx', 'print', 'sh', 'commands', 'code',
+                        'with (ctx) { return eval(code); }'
+                    );
+
+                    const r0 = fn(ctx,
+                        (t) => print(String(t)),
+                        async (s) => await runLine(String(s)),
+                        commands,
+                        code
+                    );
+
+                    const r = await Promise.resolve(r0);
+                    ctx._ = r;
+
+                    const out = jsFormat(r);
+                    if (out !== undefined) print(out, 'ok');
+                } catch (e) {
+                    print('js error: ' + (e && e.message ? e.message : String(e)), 'err');
+                }
+            }
+
+
+            function createInput() {
+                if (poweredOff) return;
+                inputContainer = document.createElement('div');
+                inputContainer.id = 'input-line';
+                promptSpan = document.createElement('span');
+                promptSpan.id = 'prompt';
+                promptSpan.className = 'cmd';
+                inputBox = document.createElement('input');
+                inputBox.id = 'cmdline';
+                inputBox.autocomplete = 'off';
+                inputBox.spellcheck = false;
+                inputBox.type = 'text';
+                inputContainer.appendChild(promptSpan);
+                inputContainer.appendChild(inputBox);
+                term.appendChild(inputContainer);
+                updatePrompt();
+                term.scrollTop = term.scrollHeight;
+
+                inputBox.addEventListener('keydown', onKeyDown);
+                inputBox.focus();
+            }
+
+            function destroyInput() {
+                if (!inputContainer) return;
+                if (inputBox) inputBox.removeEventListener('keydown', onKeyDown);
+                inputContainer.remove();
+                inputContainer = null;
+                inputBox = null;
+                promptSpan = null;
+            }
+
+            async function onKeyDown(e) {
+                // 使用事件目标而不是全局 inputBox，避免 destroyInput() 后变成 null
+                const box = e.currentTarget || inputBox;
+                if (!box) return;
+                if (!box.isConnected) return;
+
+                if (shellReadRequest && e.key === 'Escape') {
+                    e.preventDefault();
+                    const req = shellReadRequest;
+                    shellReadRequest = null;
+                    const ptxt = promptSpan && promptSpan.textContent ? promptSpan.textContent : (req.promptText || (req.secret ? 'password>' : 'input>'));
+                    print(ptxt + ' [cancelled]', 'cmd');
+                    box.value = '';
+                    box.type = 'text';
+                    updatePrompt();
+                    req.resolve(null);
+                    return;
+                }
+
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const text = box.value;
+
+                    // 0) Terminal prompt/secret reads
+                    if (shellReadRequest) {
+                        const req = shellReadRequest;
+                        shellReadRequest = null;
+                        const shown = req.secret ? '*'.repeat(text.length) : text;
+                        const ptxt = promptSpan && promptSpan.textContent ? promptSpan.textContent : (req.promptText || (req.secret ? 'password>' : 'input>'));
+                        print(ptxt + ' ' + shown, 'cmd');
+                        box.value = '';
+                        box.type = 'text';
+                        updatePrompt();
+                        req.resolve(text);
+                        return;
+                    }
+
+                    // 1) Here-doc consumes lines
+                    if (hereDoc) {
+                        handleHereDocLine(text);
+                        box.value = '';
+                        return;
+                    }
+
+                    // 2) JS stdin (runjs script waiting for input)
+                    if (jsStdin && jsStdin.active) {
+                        jsStdinFeed(text);
+                        box.value = '';
+                        return;
+                    }
+
+                    // 3) JS REPL mode
+                    if (jsRepl && jsRepl.on) {
+                        await evalJsLine(text);
+                        box.value = '';
+                        return;
+                    }
+
+                    // 4) Normal shell command
+                    runLine(text);
+                    box.value = '';
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (!history.length) return;
+                    historyIndex = Math.max(0, historyIndex - 1);
+                    box.value = history[historyIndex] || '';
+                    setTimeout(() => {
+                        if (box.isConnected) box.setSelectionRange(box.value.length, box.value.length);
+                    }, 0);
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (!history.length) return;
+                    historyIndex = Math.min(history.length, historyIndex + 1);
+                    box.value = history[historyIndex] || '';
+                    setTimeout(() => {
+                        if (box.isConnected) box.setSelectionRange(box.value.length, box.value.length);
+                    }, 0);
+                }
+            }
+
+            function handleHereDocLine(text) {
+                if (text === '.') {
+                    const f = hereDoc.fileNode;
+                    if (hereDoc.mode === 'write') {
+                        f.content = hereDoc.buffer.join('\n');
+                    } else if (hereDoc.mode === 'append') {
+                        const base = f.content ? f.content + '\n' : '';
+                        f.content = base + hereDoc.buffer.join('\n');
+                    }
+                    f.modified = now();
+                    if (f.parent) f.parent.modified = now();
+                    hereDoc = null;
+                    print('write: saved ' + getPath(f), 'info');
+                    saveState();
+                    return;
+                }
+                hereDoc.buffer.push(text);
+                print(text);
+            }
+
+            async function runLine(line) {
+    let trimmed = (line || '').trim();
+    const u = effectiveUser || currentUser;
+    const _user = u ? u.username : 'guest';
+    const _role = u ? (u.role || 'user') : 'guest';
+    const _cwd = getPath(currentDir);
+    const _sigil = (_user === 'root' || _role === 'admin') ? '#' : '$';
+    const promptText = (promptSpan && promptSpan.textContent) ? promptSpan.textContent : (_user + '@codeshell:' + _cwd + _sigil);
+    destroyInput();
+    print(promptText + ' ' + trimmed, 'cmd');
+
+    if (!trimmed) {
+        if (!poweredOff) createInput();
+        return;
+    }
+
+    // Background execution: trailing "&"
+    let bg = false;
+    if (/\s&$/.test(trimmed)) {
+        bg = true;
+        trimmed = trimmed.replace(/\s&$/, '').trim();
+    }
+
+    // Bare drive command: "C:" / "D:" / "E:"
+    if (/^[CDE]:$/i.test(trimmed)) {
+        const d = trimmed[0].toUpperCase();
+        if (isEnvironmentMode()) {
+            try {
+                await setNativeCwd(d + ':/');
+            } catch (e) {
+                print('cd: drive not found: ' + d + ':', 'error');
+            }
+        } else {
+            switchDrive(d);
+        }
+        if (!poweredOff) createInput();
+        return;
+    }
+
+    history.push(trimmed + (bg ? ' &' : ''));
+    historyIndex = history.length;
+
+    const parts = tokenize(trimmed);
+    const cmd = parts[0];
+    const args = parts.slice(1);
+    const fn = commands[cmd];
+
+    const runOne = async () => {
+        try {
+            if (isEnvironmentMode()) {
+                const handled = await handleNativeCommand(cmd, args);
+                if (handled) return;
+                if (['clear','echo','history','help','hostinfo'].indexOf(cmd) < 0) {
+                    print('command is not available in the desktop host yet.', 'dim');
+                    return;
+                }
+            }
+            if (!fn) {
+                print('command not found: ' + cmd, 'error');
+                return;
+            }
+            await Promise.resolve(fn(args));
+        } catch (e) {
+            print('error: ' + e, 'error');
+        }
+    };
+
+    if (bg) {
+        const id = jobSeq++;
+        const job = { id, cmd: trimmed, startedAt: now(), status: 'running', killed: false, promise: null };
+        job.promise = (async () => {
+            try {
+                await runOne();
+                job.status = job.killed ? 'killed' : 'done';
+            } catch (e) {
+                job.status = 'error';
+            }
+            // notify
+            print('[job ' + job.id + '] ' + job.status + ': ' + job.cmd, job.status === 'done' ? 'info' : 'error');
+            saveState();
+        })();
+        jobs.push(job);
+        print('[job ' + id + '] started: ' + trimmed, 'info');
+        if (!poweredOff) createInput();
+        return;
+    }
+
+    await runOne();
+    if (!poweredOff) createInput();
+}
+// --- Init --------------------------------------------------------------
+            loadState();
+            print('CodeShell desktop host ready.');
+            print('Drives: C:, D:, E:  |  Default admin: root(passwd: codeshell)');
+            print('Type "help" to see all commands.');
+            print('Use "hostinfo" to view desktop host details.');
+            printEmpty();
+            ensureNativeContext().catch(function () { }).finally(function () {
+                createInput();
+            });
+        })();
+    </script>
+    <script src="ace/theme/cdslight.js"></script>
+    <script src="ace/theme/cdsdark.js"></script>
+
+</body>
+</html>
