@@ -99,58 +99,6 @@
     }
 
 
-
-    #settings-toggle {
-        position: fixed;
-        top: 10px;
-        right: 12px;
-        z-index: 10001;
-        width: 38px;
-        height: 38px;
-        border: 1px solid #333;
-        background: rgba(17, 17, 17, 0.92);
-        color: #e5e5e5;
-        border-radius: 10px;
-        cursor: pointer;
-        font: inherit;
-        font-size: 18px;
-    }
-    #settings-toggle:hover { background: rgba(28, 28, 28, 0.98); }
-    #settings-panel {
-        position: fixed;
-        top: 56px;
-        right: 12px;
-        width: 340px;
-        max-width: calc(100vw - 24px);
-        background: rgba(10, 12, 16, 0.97);
-        border: 1px solid #333;
-        border-radius: 14px;
-        box-shadow: 0 16px 44px rgba(0, 0, 0, 0.45);
-        padding: 14px;
-        z-index: 10001;
-        display: none;
-    }
-    #settings-panel h3 { margin: 0 0 10px 0; font-size: 16px; }
-    #settings-panel .setting-row {
-        display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; font-size: 13px;
-    }
-    #settings-panel select,
-    #settings-panel button {
-        background: #050608; color: #e5e5e5; border: 1px solid #333; border-radius: 8px;
-        padding: 8px 10px; font-family: inherit; font-size: 13px;
-    }
-    #settings-panel button { cursor: pointer; }
-    #settings-panel .setting-actions { display: flex; gap: 8px; }
-    #settings-mode-note,
-    #settings-native-path {
-        font-size: 12px; color: #9ab6d8; white-space: pre-wrap; word-break: break-word;
-    }
-    #mode-badge {
-        position: fixed; top: 12px; right: 60px; z-index: 10000; padding: 4px 10px;
-        border-radius: 999px; border: 1px solid #333; background: rgba(17, 17, 17, 0.88);
-        color: #8aff80; font-size: 12px; user-select: none;
-    }
-
 </style>
 <script src="ace/ace.js"></script>
 <script>
@@ -325,41 +273,10 @@ if (window.ace) {
         </div>
     </div>
 
-    <button id="settings-toggle" title="Settings">⚙</button>
-    <div id="mode-badge">Mode: environment + files</div>
-    <div id="settings-panel">
-        <h3>CodeShell Settings</h3>
-        <div class="setting-row">
-            <label for="host-mode-select">Shell mode</label>
-            <select id="host-mode-select">
-                <option value="environment">Environment + Files</option>
-                <option value="data">Data Mode</option>
-            </select>
-            <div id="settings-mode-note"></div>
-        </div>
-        <div class="setting-row">
-            <div>Current native path</div>
-            <div id="settings-native-path">Loading…</div>
-        </div>
-        <div class="setting-actions">
-            <button id="settings-open-home">Go to home folder</button>
-            <button id="settings-close">Close</button>
-        </div>
-    </div>
 
     <script>
         (function () {
             const term = document.getElementById('terminal');
-            const settingsToggleBtn = document.getElementById('settings-toggle');
-            const settingsPanel = document.getElementById('settings-panel');
-            const settingsCloseBtn = document.getElementById('settings-close');
-            const settingsOpenHomeBtn = document.getElementById('settings-open-home');
-            const hostModeSelect = document.getElementById('host-mode-select');
-            const settingsModeNote = document.getElementById('settings-mode-note');
-            const settingsNativePath = document.getElementById('settings-native-path');
-            const modeBadge = document.getElementById('mode-badge');
-
-            let hostMode = 'environment';
             let nativeCtx = null;
             let nativeReady = false;
 
@@ -1270,8 +1187,6 @@ function readU64(dv, off) {
 
             commands.help = function (args) {
                 const list = [
-                    'Copyright (c) 2025 Smart-George.',
-                    'All Rights Reserved.',
                     'Commands:',
                     'Core:',
                     '  help [cmd]           - list commands or show detailed help for cmd',
@@ -3186,15 +3101,15 @@ commands.clearram = function (args) {
 
             // --- Native host mode ------------------------------------------------
             function nativeBridgeAvailable() {
-                return !!(window.nativeFs && window.nativeSettings);
+                return !!window.nativeFs;
             }
 
             function isEnvironmentMode() {
-                return hostMode === 'environment' && nativeBridgeAvailable();
+                return nativeBridgeAvailable();
             }
 
             function toNativeDisplayPath(path) {
-                return String(path || '').replace(/\\/g, '/');
+                return String(path || '').replace(/\//g, '\\');
             }
 
             function getPromptCwd() {
@@ -3213,49 +3128,12 @@ commands.clearram = function (args) {
                     nativeCtx = await window.nativeFs.getContext();
                 }
                 nativeReady = true;
-                if (settingsNativePath) settingsNativePath.textContent = toNativeDisplayPath(nativeCtx.cwd || nativeCtx.home || 'Unavailable');
                 return nativeCtx;
             }
 
-            async function loadHostMode() {
-                let mode = 'environment';
-                if (nativeBridgeAvailable()) {
-                    try {
-                        const res = await window.nativeSettings.get('shell.mode', 'environment');
-                        mode = (res && res.value) || 'environment';
-                    } catch (e) {
-                        mode = localStorage.getItem('CodeShell_HOST_MODE') || 'environment';
-                    }
-                } else {
-                    mode = localStorage.getItem('CodeShell_HOST_MODE') || 'data';
-                }
-                hostMode = mode === 'data' ? 'data' : 'environment';
-                if (hostModeSelect) hostModeSelect.value = hostMode;
-                await ensureNativeContext();
-                refreshModeUi();
-            }
-
-            async function persistHostMode(mode) {
-                hostMode = mode === 'data' ? 'data' : 'environment';
-                localStorage.setItem('CodeShell_HOST_MODE', hostMode);
-                if (nativeBridgeAvailable()) {
-                    try { await window.nativeSettings.set('shell.mode', hostMode); } catch (e) { }
-                }
-                refreshModeUi();
-                updatePrompt();
-                print('mode: switched to ' + (hostMode === 'environment' ? 'Environment + Files' : 'Data Mode'), 'info');
-            }
-
             function refreshModeUi() {
-                if (modeBadge) modeBadge.textContent = 'Mode: ' + (hostMode === 'environment' ? 'environment + files' : 'data');
-                if (settingsModeNote) {
-                    settingsModeNote.textContent = hostMode === 'environment'
-                        ? 'Real folders and files from your machine are active. Virtual CodeShell storage still exists, but it is not the default lane.'
-                        : 'Classic CodeShell virtual filesystem and browser-stored app data are active.';
-                }
-                if (settingsNativePath) {
-                    const nativeText = nativeCtx && nativeCtx.cwd ? toNativeDisplayPath(nativeCtx.cwd) : 'Native host unavailable';
-                    settingsNativePath.textContent = nativeText;
+                if (nativeCtx && nativeCtx.cwd) {
+                    nativeCtx.cwd = toNativeDisplayPath(nativeCtx.cwd);
                 }
             }
 
@@ -3474,9 +3352,6 @@ commands.clearram = function (args) {
                         if (!(res.items || []).length) print('storage: nothing found', 'dim');
                         return true;
                     }
-                    case 'mode':
-                        print('current mode: ' + (hostMode === 'environment' ? 'Environment + Files' : 'Data Mode'), 'info');
-                        return true;
                     case 'hostinfo': {
                         const info = await window.nativeHost.getInfo();
                         print('app: ' + info.appName);
@@ -3488,31 +3363,6 @@ commands.clearram = function (args) {
                     default:
                         return false;
                 }
-            }
-
-            function wireSettingsUi() {
-                if (settingsToggleBtn) settingsToggleBtn.addEventListener('click', function () {
-                    settingsPanel.style.display = settingsPanel.style.display === 'block' ? 'none' : 'block';
-                });
-                if (settingsCloseBtn) settingsCloseBtn.addEventListener('click', function () {
-                    settingsPanel.style.display = 'none';
-                });
-                if (hostModeSelect) hostModeSelect.addEventListener('change', async function () {
-                    await persistHostMode(hostModeSelect.value);
-                });
-                if (settingsOpenHomeBtn) settingsOpenHomeBtn.addEventListener('click', async function () {
-                    const ctx = await ensureNativeContext();
-                    if (ctx && ctx.home) {
-                        await setNativeCwd(ctx.home);
-                        settingsPanel.style.display = 'none';
-                    }
-                });
-                document.addEventListener('click', function (e) {
-                    if (!settingsPanel || !settingsToggleBtn) return;
-                    if (settingsPanel.style.display !== 'block') return;
-                    if (settingsPanel.contains(e.target) || settingsToggleBtn.contains(e.target)) return;
-                    settingsPanel.style.display = 'none';
-                });
             }
 
             // --- Prompt + input management ----------------------------------------
@@ -3566,7 +3416,7 @@ commands.clearram = function (args) {
                 jsRepl.on = true;
                 jsRepl.ctx = jsRepl.ctx || {};
                 print('=== JS REPL Mode ===', 'info');
-                print('Type JS code line-by-line. Result auto-prints. Promises auto-await. 🤖✨', 'info');
+                print('Type JavaScript code line-by-line. Results print automatically. Promises are awaited.', 'info');
                 print('Commands: .exit  |  !<shell command> (e.g. !ls -l)  |  .help', 'info');
                 updatePrompt();
             }
@@ -3809,8 +3659,8 @@ commands.clearram = function (args) {
             if (isEnvironmentMode()) {
                 const handled = await handleNativeCommand(cmd, args);
                 if (handled) return;
-                if (['clear','echo','history','help','mode','hostinfo'].indexOf(cmd) < 0) {
-                    print('mode: command runs only in Data Mode, or is not wired for native yet. Open Settings to switch modes.', 'dim');
+                if (['clear','echo','history','help','hostinfo'].indexOf(cmd) < 0) {
+                    print('command is not available in the desktop host yet.', 'dim');
                     return;
                 }
             }
@@ -3849,12 +3699,14 @@ commands.clearram = function (args) {
 }
 // --- Init --------------------------------------------------------------
             loadState();
-            print('Welcome to CodeShell. Copyright (c) 2025 Smart-George.');
+            print('CodeShell desktop host ready.');
             print('Drives: C:, D:, E:  |  Default admin: root(passwd: codeshell)');
             print('Type "help" to see all commands.');
-            print('Extra desktop bits: settings gear toggles shell mode, hostinfo shows native host info, mode shows active mode.');
+            print('Use "hostinfo" to view desktop host details.');
             printEmpty();
-            createInput();
+            ensureNativeContext().catch(function () { }).finally(function () {
+                createInput();
+            });
         })();
     </script>
     <script src="ace/theme/cdslight.js"></script>

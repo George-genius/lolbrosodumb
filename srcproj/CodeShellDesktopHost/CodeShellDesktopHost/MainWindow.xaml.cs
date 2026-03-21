@@ -45,7 +45,6 @@ public partial class MainWindow : Window
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         await _db.InitializeAsync();
-        await _db.SetSettingIfMissingAsync("shell.mode", "environment");
 
         try
         {
@@ -679,7 +678,7 @@ public partial class MainWindow : Window
         return Path.GetFullPath(Path.Combine(string.IsNullOrWhiteSpace(cwd) ? _homeDir : cwd, trimmed));
     }
 
-    private static string NormalizeForUi(string path) => Path.GetFullPath(path);
+    private static string NormalizeForUi(string path) => Path.GetFullPath(path).Replace('/', '\\');
 
     private static string BuildDialogFilter(string? accept)
     {
