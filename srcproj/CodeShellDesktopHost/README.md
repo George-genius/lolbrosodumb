@@ -1,6 +1,6 @@
 # CodeShell Desktop Host
 
-This is a .NET 10 WPF + WebView2 desktop wrapper for the uploaded CodeShell HTML project.
+This is a .NET 8 WPF + WebView2 desktop wrapper for the uploaded CodeShell HTML project.
 
 What changed:
 - Boots in **Environment + Files** mode by default.
@@ -20,7 +20,7 @@ Supported native-mode commands:
 Notes:
 - In **Data Mode**, the original browser-side virtual filesystem and CodeShell app/data behavior remain available.
 - In **Environment + Files** mode, unsupported legacy commands will tell you to switch to Data Mode.
-- The project was prepared in this environment but not compiled here because the .NET SDK is not installed in the container.
+- The project now targets .NET 8 so it can be opened in current Visual Studio releases and built more reliably in standard Windows desktop environments.
 
 ## Build
 
