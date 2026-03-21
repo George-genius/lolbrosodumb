@@ -3194,9 +3194,6 @@ commands.clearram = function (args) {
                     case 'pwd':
                         print(toNativeDisplayPath(ctx.cwd));
                         return true;
-                    case 'whoami':
-                        print(ctx.userName || 'unknown');
-                        return true;
                     case 'cd': {
                         const target = args[0] || (ctx.home || ctx.cwd);
                         const res = await setNativeCwd(target);
@@ -3382,9 +3379,8 @@ commands.clearram = function (args) {
                 const cwd = getPromptCwd();
                 const sigil = (user === 'root' || role === 'admin') ? '#' : '$';
                 promptSpan.textContent = shellReadRequest ? (shellReadRequest.promptText || (shellReadRequest.secret ? 'password>' : 'input>'))
-                    : (jsRepl && jsRepl.on) ? ('js ' + cwd + '>')
-                    : (jsStdin && jsStdin.active) ? ('stdin ' + cwd + '>')
-                    : isEnvironmentMode() ? (cwd + '>')
+                    : (jsRepl && jsRepl.on) ? ('js ' + user + '@codeshell:' + cwd + sigil)
+                    : (jsStdin && jsStdin.active) ? ('stdin ' + user + '@codeshell:' + cwd + '>')
                     : (user + '@codeshell:' + cwd + sigil);
                 if (inputBox) inputBox.type = (shellReadRequest && shellReadRequest.secret) ? 'password' : 'text';
             }
@@ -3616,9 +3612,9 @@ commands.clearram = function (args) {
     const u = effectiveUser || currentUser;
     const _user = u ? u.username : 'guest';
     const _role = u ? (u.role || 'user') : 'guest';
-    const _cwd = getPromptCwd();
+    const _cwd = getPath(currentDir);
     const _sigil = (_user === 'root' || _role === 'admin') ? '#' : '$';
-    const promptText = (promptSpan && promptSpan.textContent) ? promptSpan.textContent : (isEnvironmentMode() ? (_cwd + '>') : (_user + '@codeshell:' + _cwd + _sigil));
+    const promptText = (promptSpan && promptSpan.textContent) ? promptSpan.textContent : (_user + '@codeshell:' + _cwd + _sigil);
     destroyInput();
     print(promptText + ' ' + trimmed, 'cmd');
 
@@ -3699,7 +3695,10 @@ commands.clearram = function (args) {
 }
 // --- Init --------------------------------------------------------------
             loadState();
-            print('Desktop shell ready. Type "help" for commands.');
+            print('CodeShell desktop host ready.');
+            print('Drives: C:, D:, E:  |  Default admin: root(passwd: codeshell)');
+            print('Type "help" to see all commands.');
+            print('Use "hostinfo" to view desktop host details.');
             printEmpty();
             ensureNativeContext().catch(function () { }).finally(function () {
                 createInput();
