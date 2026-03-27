@@ -1,5 +1,0 @@
-namespace CodeShellDesktopHost;
-
-public partial class App : System.Windows.Application
-{
-}
